@@ -62,14 +62,16 @@ export interface ActivityEntry {
 
 export function listMissions(): Mission[] {
   const sb = getSupabase();
-  const { data, error } = sb.from('missions').select('*').order('created_at', { ascending: false });
-  if (error) { console.error('listMissions error:', error); return []; }
-  return (data as Mission[]) || [];
-}
+  const res = sb.from('missions').select('*', { count: 'exact' }).order('created_at', { ascending: false });
+  const data = (res as any).data;
+  if (!data) return [];
+  return data as Mission[];
+
 
 export function getMission(id: string): Mission | undefined {
   const sb = getSupabase();
-  const { data } = sb.from('missions').select('*').eq('id', id).single();
+  const res = sb.from('missions').select('*').eq('id', id).single();
+  const data = (res as any).data;
   return (data as Mission) || undefined;
 }
 
@@ -83,7 +85,8 @@ export function createMission(data: { id: string; name: string; description?: st
 
 export function updateMission(id: string, patch: Partial<{ name: string; description: string; status: string }>): Mission | undefined {
   const sb = getSupabase();
-  const { data } = sb.from('missions').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+  const res = sb.from('missions').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+  const data = (res as any).data;
   return (data as Mission) || undefined;
 }
 
@@ -95,25 +98,28 @@ export function deleteMission(id: string): void {
 
 export function listTasks(filters?: { status?: string; mission_id?: string; assigned_agent_id?: string }): Task[] {
   const sb = getSupabase();
-  let query = sb.from('tasks').select('*');
+  let query: any = sb.from('tasks').select('*');
   if (filters?.status) query = query.eq('status', filters.status);
   if (filters?.mission_id) query = query.eq('mission_id', filters.mission_id);
   if (filters?.assigned_agent_id) query = query.eq('assigned_agent_id', filters.assigned_agent_id);
-  const { data, error } = query.order('sort_order', { ascending: true }).order('created_at', { ascending: false });
-  if (error) { console.error('listTasks error:', error); return []; }
-  return (data as Task[]) || [];
+  const res = query.order('sort_order', { ascending: true }).order('created_at', { ascending: false });
+  const data = (res as any).data;
+  if (!data) return [];
+  return data as Task[];
 }
 
 export function getTask(id: string): Task | undefined {
   const sb = getSupabase();
-  const { data } = sb.from('tasks').select('*').eq('id', id).single();
+  const res = sb.from('tasks').select('*').eq('id', id).single();
+  const data = (res as any).data;
   return (data as Task) || undefined;
 }
 
 export function createTask(data: { id: string; title: string; description?: string; status?: string; priority?: string; mission_id?: string; assigned_agent_id?: string }): Task {
   const sb = getSupabase();
   const now = new Date().toISOString();
-  const { data: maxData } = sb.from('tasks').select('sort_order').eq('status', data.status || 'inbox').order('sort_order', { ascending: false }).limit(1).single();
+  const maxRes: any = sb.from('tasks').select('sort_order').eq('status', data.status || 'inbox').order('sort_order', { ascending: false }).limit(1).single();
+  const maxData = maxRes?.data;
   const nextOrder = (maxData?.sort_order || 0) + 1;
   const task = { id: data.id, title: data.title, description: data.description || '', status: (data.status || 'inbox'), priority: (data.priority || 'medium'), mission_id: data.mission_id || null, assigned_agent_id: data.assigned_agent_id || null, openclaw_session_key: null, sort_order: nextOrder, created_at: now, updated_at: now };
   sb.from('tasks').insert(task).select().single();
@@ -122,7 +128,8 @@ export function createTask(data: { id: string; title: string; description?: stri
 
 export function updateTask(id: string, patch: Partial<Task>): Task | undefined {
   const sb = getSupabase();
-  const { data } = sb.from('tasks').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+  const res = sb.from('tasks').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+  const data = (res as any).data;
   return (data as Task) || undefined;
 }
 
@@ -134,7 +141,8 @@ export function deleteTask(id: string): void {
 
 export function listComments(taskId: string): TaskComment[] {
   const sb = getSupabase();
-  const { data } = sb.from('task_comments').select('*').eq('task_id', taskId).order('created_at', { ascending: true });
+  const res = sb.from('task_comments').select('*').eq('task_id', taskId).order('created_at', { ascending: true });
+  const data = (res as any).data;
   return (data as TaskComment[]) || [];
 }
 
@@ -154,8 +162,9 @@ export function logActivity(data: { id: string; type: string; agent_id?: string;
 
 export function listActivity(opts?: { limit?: number; type?: string }): ActivityEntry[] {
   const sb = getSupabase();
-  let query = sb.from('activity_log').select('*');
+  let query: any = sb.from('activity_log').select('*');
   if (opts?.type) query = query.eq('type', opts.type);
-  const { data } = query.order('created_at', { ascending: false }).limit(opts?.limit || 50);
+  const res = query.order('created_at', { ascending: false }).limit(opts?.limit || 50);
+  const data = (res as any).data;
   return (data as ActivityEntry[]) || [];
 }
