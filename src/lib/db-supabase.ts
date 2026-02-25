@@ -17,7 +17,7 @@ export interface Mission {
   id: string;
   name: string;
   description: string;
-  status: 'active' | 'paused' | 'completed' | 'archived';
+  status: 'active' as const | 'paused' | 'completed' | 'archived';
   created_at: string;
   updated_at: string;
 }
@@ -71,7 +71,7 @@ export function getMission(id: string): Mission | undefined {
 export function createMission(data: { id: string; name: string; description?: string }): Mission {
   const sb = getSupabase();
   const now = new Date().toISOString();
-  const mission = { id: data.id, name: data.name, description: data.description || '', status: 'active', created_at: now, updated_at: now };
+  const mission = { id: data.id, name: data.name, description: data.description || '', status: 'active' as const, created_at: now, updated_at: now };
   (sb.from('missions').insert(mission).select().single() as any).data;
   return mission;
 }
@@ -107,7 +107,7 @@ export function createTask(data: { id: string; title: string; description?: stri
   const now = new Date().toISOString();
   const maxRes: any = sb.from('tasks').select('sort_order').eq('status', data.status || 'inbox').order('sort_order', { ascending: false }).limit(1).single();
   const nextOrder = (maxRes.data?.sort_order || 0) + 1;
-  const task = { id: data.id, title: data.title, description: data.description || '', status: (data.status || 'inbox'), priority: (data.priority || 'medium'), mission_id: data.mission_id || null, assigned_agent_id: data.assigned_agent_id || null, openclaw_session_key: null, sort_order: nextOrder, created_at: now, updated_at: now };
+  const task = { id: data.id, title: data.title, description: data.description || '', status: (data.status || 'inbox') as const, priority: (data.priority || 'medium') as const, mission_id: data.mission_id || null, assigned_agent_id: data.assigned_agent_id || null, openclaw_session_key: null, sort_order: nextOrder, created_at: now, updated_at: now };
   (sb.from('tasks').insert(task).select().single() as any).data;
   return task;
 }
@@ -130,7 +130,7 @@ export function listComments(taskId: string): TaskComment[] {
 
 export function addComment(data: { id: string; task_id: string; agent_id?: string; author_type?: string; content: string }): TaskComment {
   const sb = getSupabase();
-  const comment = { id: data.id, task_id: data.task_id, agent_id: data.agent_id || null, author_type: (data.author_type || 'agent'), content: data.content, created_at: new Date().toISOString() };
+  const comment = { id: data.id, task_id: data.task_id, agent_id: data.agent_id || null, author_type: (data.author_type || 'agent') as const, content: data.content, created_at: new Date().toISOString() };
   (sb.from('task_comments').insert(comment).select().single() as any).data;
   return comment as TaskComment;
 }
