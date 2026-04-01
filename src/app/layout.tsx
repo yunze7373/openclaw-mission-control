@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ExtensionErrorGuard } from "@/components/extension-error-guard";
+import { LocaleProvider } from "@/components/locale-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Mission Control — AI Agent Dashboard",
+  title: "Mission Control",
   description:
-    "Orchestrate your AI agent squad with a Kanban board, real-time activity feed, and agent management.",
+    "OpenClaw mission control dashboard.",
 };
 
 export default function RootLayout({
@@ -29,16 +31,19 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <TooltipProvider delayDuration={200}>
-            {children}
-          </TooltipProvider>
-        </ThemeProvider>
+        <ExtensionErrorGuard />
+        <LocaleProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <TooltipProvider delayDuration={200}>
+              {children}
+            </TooltipProvider>
+          </ThemeProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

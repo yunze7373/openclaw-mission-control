@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useLocale } from "@/components/locale-provider";
 import {
   Dialog,
   DialogContent,
@@ -52,45 +53,46 @@ interface CronJob {
 
 // Human-friendly schedule presets
 const SCHEDULE_PRESETS = [
-  { label: "Every hour", cron: "0 * * * *" },
-  { label: "Every day at 9:00 AM", cron: "0 9 * * *" },
-  { label: "Every day at 6:00 PM", cron: "0 18 * * *" },
-  { label: "Every weekday at 9:00 AM", cron: "0 9 * * 1-5" },
-  { label: "Every Monday at 9:00 AM", cron: "0 9 * * 1" },
-  { label: "Every Sunday at 2:00 AM", cron: "0 2 * * 0" },
-  { label: "Every 15 minutes", cron: "*/15 * * * *" },
-  { label: "Every 30 minutes", cron: "*/30 * * * *" },
-  { label: "Twice a day (9 AM & 6 PM)", cron: "0 9,18 * * *" },
-  { label: "First day of month", cron: "0 9 1 * *" },
+  { labelKey: "cron.presets.everyHour", cron: "0 * * * *" },
+  { labelKey: "cron.presets.everyDay9", cron: "0 9 * * *" },
+  { labelKey: "cron.presets.everyDay18", cron: "0 18 * * *" },
+  { labelKey: "cron.presets.weekdays9", cron: "0 9 * * 1-5" },
+  { labelKey: "cron.presets.monday9", cron: "0 9 * * 1" },
+  { labelKey: "cron.presets.sunday2", cron: "0 2 * * 0" },
+  { labelKey: "cron.presets.every15", cron: "*/15 * * * *" },
+  { labelKey: "cron.presets.every30", cron: "*/30 * * * *" },
+  { labelKey: "cron.presets.twiceDaily", cron: "0 9,18 * * *" },
+  { labelKey: "cron.presets.firstDay", cron: "0 9 1 * *" },
 ];
 
-function formatMs(ms: number): string {
-  if (ms < 60_000) return `${Math.round(ms / 1000)} seconds`;
-  if (ms < 3_600_000) return `${Math.round(ms / 60_000)} minutes`;
-  if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)} hours`;
-  return `${Math.round(ms / 86_400_000)} days`;
+function formatMs(ms: number, locale: string): string {
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "always" });
+  if (ms < 60_000) return rtf.format(Math.round(ms / 1000), "second").replace(/^[+-]/, "");
+  if (ms < 3_600_000) return rtf.format(Math.round(ms / 60_000), "minute").replace(/^[+-]/, "");
+  if (ms < 86_400_000) return rtf.format(Math.round(ms / 3_600_000), "hour").replace(/^[+-]/, "");
+  return rtf.format(Math.round(ms / 86_400_000), "day").replace(/^[+-]/, "");
 }
 
-function scheduleToHuman(schedule: string | ScheduleObject): string {
+function scheduleToHuman(schedule: string | ScheduleObject, locale: string, t: (key: string) => string): string {
   if (typeof schedule === "object" && schedule !== null) {
     if (schedule.kind === "every" && schedule.everyMs) {
-      return `Every ${formatMs(schedule.everyMs)}`;
+      return `${t("cron.scheduleLabel")}: ${formatMs(schedule.everyMs, locale)}`;
     }
     if (schedule.kind === "cron" && schedule.cron) {
-      return cronToHuman(schedule.cron);
+      return cronToHuman(schedule.cron, t);
     }
     if (schedule.everyMs) {
-      return `Every ${formatMs(schedule.everyMs)}`;
+      return `${t("cron.scheduleLabel")}: ${formatMs(schedule.everyMs, locale)}`;
     }
-    return "Custom schedule";
+    return t("cron.customSchedule");
   }
-  if (typeof schedule !== "string") return "Custom schedule";
-  return cronToHuman(schedule);
+  if (typeof schedule !== "string") return t("cron.customSchedule");
+  return cronToHuman(schedule, t);
 }
 
-function cronToHuman(cron: string): string {
+function cronToHuman(cron: string, t: (key: string) => string): string {
   const preset = SCHEDULE_PRESETS.find((p) => p.cron === cron);
-  if (preset) return preset.label;
+  if (preset) return t(preset.labelKey);
 
   const parts = cron.split(" ");
   if (parts.length !== 5) return cron;
@@ -101,31 +103,15 @@ function cronToHuman(cron: string): string {
     const h = parseInt(hour);
     const ampm = h >= 12 ? "PM" : "AM";
     const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-    return `Every day at ${h12}:00 ${ampm}`;
+    return `${t("cron.presets.everyDay9").split("9:00")[0]}${h12}:00 ${ampm}`;
   }
-  if (min.startsWith("*/")) return `Every ${min.slice(2)} minutes`;
-  if (hour.startsWith("*/")) return `Every ${hour.slice(2)} hours`;
+  if (min.startsWith("*/")) return `${t("cron.scheduleLabel")}: */${min.slice(2)}`;
+  if (hour.startsWith("*/")) return `${t("cron.scheduleLabel")}: */${hour.slice(2)}h`;
   return cron;
 }
 
-function timeAgo(dateStr: string | undefined): string {
-  if (!dateStr) return "Never";
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return dateStr;
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 0) {
-    const future = Math.abs(seconds);
-    if (future < 3600) return `in ${Math.floor(future / 60)}m`;
-    if (future < 86400) return `in ${Math.floor(future / 3600)}h`;
-    return `in ${Math.floor(future / 86400)}d`;
-  }
-  if (seconds < 60) return "just now";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
-}
-
 export function CronScheduler() {
+  const { t, locale, formatRelativeTime } = useLocale();
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -231,19 +217,19 @@ export function CronScheduler() {
               <Calendar className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">Scheduled Tasks</h2>
+              <h2 className="text-xl font-bold">{t("cron.title")}</h2>
               <p className="text-sm text-muted-foreground">
-                Set up recurring AI tasks — they run automatically on schedule
+                {t("cron.subtitle")}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="secondary" className="font-mono">
-              {jobs.filter((j) => j.enabled).length} active
+              {t("cron.activeCount", { count: jobs.filter((j) => j.enabled).length })}
             </Badge>
             <Button onClick={() => setShowCreate(true)} className="gap-1.5">
               <Plus className="w-4 h-4" />
-              New Task
+              {t("common.newTask")}
             </Button>
           </div>
         </div>
@@ -257,13 +243,13 @@ export function CronScheduler() {
         ) : jobs.length === 0 ? (
           <div className="text-center py-16">
             <Clock className="w-14 h-14 mx-auto mb-3 text-muted-foreground opacity-30" />
-            <p className="text-lg font-medium mb-1">No Scheduled Tasks</p>
+            <p className="text-lg font-medium mb-1">{t("cron.noTasks")}</p>
             <p className="text-sm text-muted-foreground mb-4">
-              Create your first recurring AI task
+              {t("cron.createFirst")}
             </p>
             <Button onClick={() => setShowCreate(true)} className="gap-1.5">
               <Plus className="w-4 h-4" />
-              Create Task
+              {t("cron.createTask")}
             </Button>
           </div>
         ) : (
@@ -291,19 +277,19 @@ export function CronScheduler() {
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm truncate">
-                        {job.prompt || "Unnamed task"}
+                        {job.prompt || t("cron.unnamedTask")}
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          {scheduleToHuman(job.schedule)}
+                          {scheduleToHuman(job.schedule, locale, t)}
                         </span>
                         <span className="flex items-center gap-1">
                           <Bot className="w-3 h-3" />
                           {job.agentId || "main"}
                         </span>
                         {job.nextRun && (
-                          <span>Next: {timeAgo(job.nextRun)}</span>
+                          <span>{t("cron.next")}: {formatRelativeTime(job.nextRun)}</span>
                         )}
                       </div>
                     </div>
@@ -316,14 +302,14 @@ export function CronScheduler() {
                         onClick={() => runNow(job.id)}
                         disabled={isLoading}
                         className="gap-1 text-xs h-8"
-                        title="Run Now"
+                        title={t("cron.runNowTitle")}
                       >
                         {isLoading ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         ) : (
                           <Play className="w-3.5 h-3.5" />
                         )}
-                        Run
+                        {t("cron.runNow")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -331,14 +317,14 @@ export function CronScheduler() {
                         onClick={() => toggleJob(job.id, job.enabled)}
                         disabled={isLoading}
                         className="gap-1 text-xs h-8"
-                        title={job.enabled ? "Pause" : "Resume"}
+                        title={job.enabled ? t("cron.pause") : t("cron.resume")}
                       >
                         {job.enabled ? (
                           <Pause className="w-3.5 h-3.5" />
                         ) : (
                           <RotateCcw className="w-3.5 h-3.5" />
                         )}
-                        {job.enabled ? "Pause" : "Resume"}
+                        {job.enabled ? t("cron.pause") : t("cron.resume")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -362,20 +348,20 @@ export function CronScheduler() {
                     <div className="px-4 pb-4 pt-0 border-t border-border ml-6">
                       <div className="grid grid-cols-2 gap-3 py-3 text-xs">
                         <div>
-                          <span className="text-muted-foreground">Schedule:</span>{" "}
-                          <span className="font-mono">{scheduleToHuman(job.schedule)}</span>
+                          <span className="text-muted-foreground">{t("cron.scheduleLabel")}:</span>{" "}
+                          <span className="font-mono">{scheduleToHuman(job.schedule, locale, t)}</span>
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Agent:</span>{" "}
+                          <span className="text-muted-foreground">{t("cron.agent")}:</span>{" "}
                           {job.agentId || "main"}
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Last run:</span>{" "}
-                          {timeAgo(job.lastRun)}
+                          <span className="text-muted-foreground">{t("cron.lastRunLabel")}:</span>{" "}
+                          {job.lastRun ? formatRelativeTime(job.lastRun) : t("cron.never")}
                         </div>
                         <div>
-                          <span className="text-muted-foreground">Next run:</span>{" "}
-                          {timeAgo(job.nextRun)}
+                          <span className="text-muted-foreground">{t("cron.nextRunLabel")}:</span>{" "}
+                          {job.nextRun ? formatRelativeTime(job.nextRun) : t("cron.never")}
                         </div>
                       </div>
                       <div className="flex gap-2 pt-2">
@@ -387,7 +373,7 @@ export function CronScheduler() {
                           className="gap-1 text-xs text-red-400 border-red-400/20 hover:bg-red-400/10"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                          Delete
+                          {t("cron.delete")}
                         </Button>
                       </div>
                     </div>
@@ -403,9 +389,9 @@ export function CronScheduler() {
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Schedule a New Task</DialogTitle>
+            <DialogTitle>{t("cron.createDialogTitle")}</DialogTitle>
             <DialogDescription>
-              Tell your AI agent what to do, and how often.
+              {t("cron.createDialogDesc")}
             </DialogDescription>
           </DialogHeader>
 
@@ -413,12 +399,12 @@ export function CronScheduler() {
             {/* Prompt */}
             <div>
               <label className="block text-sm font-medium mb-1.5">
-                What should the AI do?
+                {t("cron.whatShouldDo")}
               </label>
               <textarea
                 value={newPrompt}
                 onChange={(e) => setNewPrompt(e.target.value)}
-                placeholder="Summarize my unread emails and send a brief to Slack"
+                placeholder={t("cron.promptExample")}
                 rows={3}
                 className="w-full px-3 py-2 bg-background border border-border rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
               />
@@ -427,16 +413,16 @@ export function CronScheduler() {
             {/* Schedule */}
             <div>
               <label className="block text-sm font-medium mb-1.5">
-                How often?
+                {t("cron.howOften")}
               </label>
               <Select value={newSchedule} onValueChange={setNewSchedule}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose a schedule" />
+                  <SelectValue placeholder={t("cron.chooseSchedule")} />
                 </SelectTrigger>
                 <SelectContent>
                   {SCHEDULE_PRESETS.map((p) => (
                     <SelectItem key={p.cron} value={p.cron}>
-                      {p.label}
+                      {t(p.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -446,7 +432,7 @@ export function CronScheduler() {
             {/* Agent */}
             <div>
               <label className="block text-sm font-medium mb-1.5">
-                Which agent?
+                {t("cron.whichAgent")}
               </label>
               <input
                 type="text"
@@ -460,7 +446,7 @@ export function CronScheduler() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreate(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={createJob}
@@ -472,7 +458,7 @@ export function CronScheduler() {
               ) : (
                 <Plus className="w-4 h-4" />
               )}
-              Create Task
+              {t("cron.createTask")}
             </Button>
           </DialogFooter>
         </DialogContent>

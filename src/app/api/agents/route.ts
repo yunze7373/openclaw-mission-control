@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOpenClawClient } from "@/lib/openclaw-client";
 
+export const dynamic = "force-dynamic";
+
 // POST - Create a new agent in OpenClaw
 export async function POST(request: NextRequest) {
   try {

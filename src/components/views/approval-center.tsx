@@ -17,6 +17,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useLocale } from "@/components/locale-provider";
+import { approvalDecisionLabel } from "@/lib/i18n-mappers";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +32,12 @@ interface ApprovalRequest {
   id: string;
   command?: string;
   cmd?: string;
+  request?: {
+    command?: string;
+    cwd?: string | null;
+    agentId?: string | null;
+    sessionKey?: string | null;
+  };
   cwd?: string;
   agentId?: string;
   agent?: string;
@@ -49,17 +57,8 @@ function getRiskLevel(cmd: string): { level: string; color: string; icon: typeof
   return { level: "LOW", color: "text-green-400 bg-green-400/10 border-green-400/20", icon: ShieldCheck };
 }
 
-function timeAgo(dateStr: string): string {
-  const date = new Date(dateStr);
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
-}
-
 export function ApprovalCenter() {
+  const { t, formatRelativeTime } = useLocale();
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -74,11 +73,7 @@ export function ApprovalCenter() {
     try {
       const res = await fetch("/api/openclaw/approvals");
       const data = await res.json();
-      const items: ApprovalRequest[] = Array.isArray(data.approvals)
-        ? data.approvals
-        : data.approvals
-          ? Object.values(data.approvals)
-          : [];
+      const items: ApprovalRequest[] = Array.isArray(data.approvals) ? data.approvals : [];
       // Separate pending from resolved
       const pending = items.filter((a) => !a.decision && a.status !== "resolved");
       const resolved = items.filter((a) => a.decision || a.status === "resolved");
@@ -124,9 +119,9 @@ export function ApprovalCenter() {
               <Shield className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">Command Approvals</h2>
+              <h2 className="text-xl font-bold">{t("approvals.title")}</h2>
               <p className="text-sm text-muted-foreground">
-                Review and approve commands your AI agents want to run
+                {t("approvals.subtitle")}
               </p>
             </div>
           </div>
@@ -134,12 +129,12 @@ export function ApprovalCenter() {
             {pendingCount > 0 && (
               <Badge className="gap-1.5 px-3 py-1 bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
                 <AlertTriangle className="w-3.5 h-3.5" />
-                {pendingCount} Pending
+                {pendingCount} {t("approvals.pending")}
               </Badge>
             )}
             <Button variant="outline" size="sm" onClick={fetchApprovals} className="gap-1.5">
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-              Refresh
+              {t("common.refresh")}
             </Button>
           </div>
         </div>
@@ -154,10 +149,10 @@ export function ApprovalCenter() {
         ) : pendingCount > 0 ? (
           <div className="space-y-4 mb-8">
             <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-              Pending Approvals
+              {t("approvals.pendingApprovals")}
             </h3>
             {approvals.map((req) => {
-              const cmd = req.command || req.cmd || "Unknown command";
+              const cmd = req.command || req.cmd || req.request?.command || t("approvals.unknownCommand");
               const risk = getRiskLevel(cmd);
               const RiskIcon = risk.icon;
               return (
@@ -169,33 +164,33 @@ export function ApprovalCenter() {
                     <div className="flex items-center gap-2.5">
                       <Bot className="w-4 h-4 text-primary" />
                       <span className="text-sm font-medium">
-                        Agent: {req.agentId || req.agent || "main"}
+                        {t("approvals.agent")}: {req.agentId || req.agent || req.request?.agentId || t("approvals.main")}
                       </span>
                       <Badge variant="outline" className={`text-[10px] ${risk.color}`}>
                         <RiskIcon className="w-3 h-3 mr-1" />
-                        {risk.level} RISK
+                        {risk.level === "HIGH" ? t("approvals.riskHigh") : risk.level === "MEDIUM" ? t("approvals.riskMedium") : t("approvals.riskLow")}
                       </Badge>
                     </div>
                     <span className="text-xs text-muted-foreground flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {req.timestamp || req.createdAt
-                        ? timeAgo(req.timestamp || req.createdAt!)
-                        : "just now"}
+                        ? formatRelativeTime(req.timestamp || req.createdAt!)
+                        : t("common.justNow")}
                     </span>
                   </div>
 
                   {/* Command display */}
                   <div className="mb-3">
-                    <span className="text-xs text-muted-foreground block mb-1.5">Command:</span>
+                    <span className="text-xs text-muted-foreground block mb-1.5">{t("approvals.command")}:</span>
                     <pre className="bg-muted/50 rounded border border-border px-4 py-3 text-sm font-mono overflow-x-auto">
                       {cmd}
                     </pre>
                   </div>
 
-                  {req.cwd && (
+                  {(req.cwd || req.request?.cwd) && (
                     <div className="mb-4 text-xs text-muted-foreground flex items-center gap-1.5">
                       <Terminal className="w-3.5 h-3.5" />
-                      Working directory: <span className="font-mono">{req.cwd}</span>
+                      {t("approvals.workingDirectory")}: <span className="font-mono">{req.cwd || req.request?.cwd}</span>
                     </div>
                   )}
 
@@ -213,7 +208,7 @@ export function ApprovalCenter() {
                       ) : (
                         <CheckCircle2 className="w-4 h-4" />
                       )}
-                      Approve
+                      {t("approvals.approve")}
                     </Button>
                     <Button
                       variant="outline"
@@ -224,7 +219,7 @@ export function ApprovalCenter() {
                       className="gap-1.5 text-red-400 border-red-400/20 hover:bg-red-400/10"
                     >
                       <XCircle className="w-4 h-4" />
-                      Reject
+                      {t("approvals.reject")}
                     </Button>
                   </div>
                 </div>
@@ -234,9 +229,9 @@ export function ApprovalCenter() {
         ) : (
           <div className="text-center py-16">
             <ShieldCheck className="w-14 h-14 mx-auto mb-3 text-green-500 opacity-40" />
-            <p className="text-lg font-medium mb-1">All Clear</p>
+            <p className="text-lg font-medium mb-1">{t("approvals.allClear")}</p>
             <p className="text-sm text-muted-foreground">
-              No commands waiting for your approval
+              {t("approvals.noCommands")}
             </p>
           </div>
         )}
@@ -245,12 +240,12 @@ export function ApprovalCenter() {
         {history.length > 0 && (
           <div>
             <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">
-              History
+              {t("approvals.history")}
             </h3>
             <div className="space-y-1.5">
               {history.slice(0, 20).map((req, i) => {
-                const cmd = req.command || req.cmd || "Unknown";
-                const approved = req.decision === "approve";
+                const cmd = req.command || req.cmd || req.request?.command || t("approvals.unknownCommand");
+                const approved = req.decision === "approve" || req.decision === "allow-once" || req.decision === "allow-always";
                 return (
                   <div
                     key={req.id || i}
@@ -263,11 +258,14 @@ export function ApprovalCenter() {
                     )}
                     <span className="font-mono text-xs truncate flex-1">{cmd}</span>
                     <span className="text-xs text-muted-foreground shrink-0">
-                      {req.agentId || req.agent || "main"}
+                      {req.agentId || req.agent || req.request?.agentId || t("approvals.main")}
+                    </span>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {approvalDecisionLabel(req.decision, t)}
                     </span>
                     <span className="text-xs text-muted-foreground shrink-0">
                       {req.timestamp || req.createdAt
-                        ? timeAgo(req.timestamp || req.createdAt!)
+                        ? formatRelativeTime(req.timestamp || req.createdAt!)
                         : "-"}
                     </span>
                   </div>
@@ -287,13 +285,13 @@ export function ApprovalCenter() {
           <DialogHeader>
             <DialogTitle>
               {confirmDialog?.decision === "approve"
-                ? "Approve this command?"
-                : "Reject this command?"}
+                ? t("approvals.confirmApproveQuestion")
+                : t("approvals.confirmRejectQuestion")}
             </DialogTitle>
             <DialogDescription>
               {confirmDialog?.decision === "approve"
-                ? "This will allow the AI agent to execute the command."
-                : "This will block the AI agent from running the command."}
+                ? t("approvals.confirmApproveDesc")
+                : t("approvals.confirmRejectDesc")}
             </DialogDescription>
           </DialogHeader>
           <pre className="bg-muted/50 rounded border border-border px-4 py-3 text-sm font-mono overflow-x-auto">
@@ -301,7 +299,7 @@ export function ApprovalCenter() {
           </pre>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmDialog(null)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={() =>
@@ -314,7 +312,7 @@ export function ApprovalCenter() {
                   : "bg-red-500 hover:bg-red-600"
               }
             >
-              {confirmDialog?.decision === "approve" ? "Yes, Approve" : "Yes, Reject"}
+              {confirmDialog?.decision === "approve" ? t("approvals.yesApprove") : t("approvals.yesReject")}
             </Button>
           </DialogFooter>
         </DialogContent>

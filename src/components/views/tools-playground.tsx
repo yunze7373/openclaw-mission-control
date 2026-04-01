@@ -23,30 +23,32 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useLocale } from "@/components/locale-provider";
+import { ToolCatalogEntry, toolCategoryLabel } from "@/lib/i18n-mappers";
 
 // Tool definitions with human-friendly names and categories
-const TOOL_CATALOG = [
+const TOOL_CATALOG: ToolCatalogEntry[] = [
   // Sessions
-  { tool: "sessions_list", label: "List Sessions", desc: "Show all active AI sessions", category: "Sessions", icon: MessageSquare, params: [{ name: "agentId", label: "Agent", type: "text", placeholder: "All agents", optional: true }] },
-  { tool: "sessions_preview", label: "Preview Session", desc: "See recent messages in a session", category: "Sessions", icon: MessageSquare, params: [{ name: "keys", label: "Session Key", type: "text", placeholder: "agent:main:main" }] },
+  { tool: "sessions_list", labelKey: "tools.toolLabels.sessionsList", descKey: "tools.toolDescs.sessionsList", categoryKey: "tools.categories.sessions", icon: MessageSquare, params: [{ name: "agentId", labelKey: "tools.paramLabels.agent", type: "text", placeholderKey: "tools.paramPlaceholders.allAgents", optional: true }] },
+  { tool: "sessions_preview", labelKey: "tools.toolLabels.sessionsPreview", descKey: "tools.toolDescs.sessionsPreview", categoryKey: "tools.categories.sessions", icon: MessageSquare, params: [{ name: "keys", labelKey: "tools.paramLabels.sessionKey", type: "text", placeholderKey: "tools.paramPlaceholders.sessionKey" }] },
   // Agents
-  { tool: "agents_list", label: "List Agents", desc: "Show all configured AI agents", category: "Agents", icon: Bot, params: [] },
+  { tool: "agents_list", labelKey: "tools.toolLabels.agentsList", descKey: "tools.toolDescs.agentsList", categoryKey: "tools.categories.agents", icon: Bot, params: [] },
   // Cron
-  { tool: "cron_list", label: "List Scheduled Tasks", desc: "Show all recurring AI tasks", category: "Automation", icon: Calendar, params: [] },
-  { tool: "cron_status", label: "Scheduler Status", desc: "Check if the scheduler is running", category: "Automation", icon: Calendar, params: [] },
+  { tool: "cron_list", labelKey: "tools.toolLabels.cronList", descKey: "tools.toolDescs.cronList", categoryKey: "tools.categories.automation", icon: Calendar, params: [] },
+  { tool: "cron_status", labelKey: "tools.toolLabels.cronStatus", descKey: "tools.toolDescs.cronStatus", categoryKey: "tools.categories.automation", icon: Calendar, params: [] },
   // Usage
-  { tool: "usage_status", label: "Usage Status", desc: "Current token usage and quotas", category: "Usage", icon: BarChart3, params: [] },
-  { tool: "usage_cost", label: "Usage Cost", desc: "Total spending so far", category: "Usage", icon: BarChart3, params: [] },
+  { tool: "usage_status", labelKey: "tools.toolLabels.usageStatus", descKey: "tools.toolDescs.usageStatus", categoryKey: "tools.categories.usage", icon: BarChart3, params: [] },
+  { tool: "usage_cost", labelKey: "tools.toolLabels.usageCost", descKey: "tools.toolDescs.usageCost", categoryKey: "tools.categories.usage", icon: BarChart3, params: [] },
   // System
-  { tool: "health", label: "Health Check", desc: "Verify the gateway is healthy", category: "System", icon: Shield, params: [] },
-  { tool: "status", label: "System Status", desc: "Full gateway status information", category: "System", icon: Shield, params: [] },
-  { tool: "models_list", label: "List Models", desc: "Show all available AI models", category: "System", icon: Database, params: [] },
-  { tool: "channels_status", label: "Channel Status", desc: "Status of messaging channels", category: "Channels", icon: Globe, params: [] },
-  { tool: "skills_status", label: "Skills Status", desc: "List installed agent skills", category: "System", icon: Wrench, params: [] },
-  { tool: "logs_tail", label: "Recent Logs", desc: "Fetch the latest log entries", category: "System", icon: Clock, params: [] },
+  { tool: "health", labelKey: "tools.toolLabels.health", descKey: "tools.toolDescs.health", categoryKey: "tools.categories.system", icon: Shield, params: [] },
+  { tool: "status", labelKey: "tools.toolLabels.status", descKey: "tools.toolDescs.status", categoryKey: "tools.categories.system", icon: Shield, params: [] },
+  { tool: "models_list", labelKey: "tools.toolLabels.modelsList", descKey: "tools.toolDescs.modelsList", categoryKey: "tools.categories.system", icon: Database, params: [] },
+  { tool: "channels_status", labelKey: "tools.toolLabels.channelsStatus", descKey: "tools.toolDescs.channelsStatus", categoryKey: "tools.categories.channels", icon: Globe, params: [] },
+  { tool: "skills_status", labelKey: "tools.toolLabels.skillsStatus", descKey: "tools.toolDescs.skillsStatus", categoryKey: "tools.categories.system", icon: Wrench, params: [] },
+  { tool: "logs_tail", labelKey: "tools.toolLabels.logsTail", descKey: "tools.toolDescs.logsTail", categoryKey: "tools.categories.system", icon: Clock, params: [] },
 ];
 
-const CATEGORIES = ["All", ...Array.from(new Set(TOOL_CATALOG.map((t) => t.category)))];
+const CATEGORIES = ["tools.categories.all", ...Array.from(new Set(TOOL_CATALOG.map((t) => t.categoryKey)))];
 
 interface ToolResult {
   ok: boolean;
@@ -56,6 +58,7 @@ interface ToolResult {
 }
 
 export function ToolsPlayground() {
+  const { t } = useLocale();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [selectedTool, setSelectedTool] = useState(TOOL_CATALOG[0]);
@@ -71,12 +74,12 @@ export function ToolsPlayground() {
     return new Set<string>();
   });
 
-  const filteredTools = TOOL_CATALOG.filter((t) => {
+  const filteredTools = TOOL_CATALOG.filter((toolDef) => {
     const matchSearch =
       !search ||
-      t.label.toLowerCase().includes(search.toLowerCase()) ||
-      t.desc.toLowerCase().includes(search.toLowerCase());
-    const matchCategory = category === "All" || t.category === category;
+      t(toolDef.labelKey).toLowerCase().includes(search.toLowerCase()) ||
+      t(toolDef.descKey).toLowerCase().includes(search.toLowerCase());
+    const matchCategory = category === "tools.categories.all" || toolDef.categoryKey === category;
     return matchSearch && matchCategory;
   });
 
@@ -131,7 +134,7 @@ export function ToolsPlayground() {
         ok: data.ok === true,
         data: data.ok ? data.result : data,
         duration: Date.now() - start,
-        error: data.ok ? undefined : (data.error || "Unknown error"),
+        error: data.ok ? undefined : (data.error || t("tools.unknownError")),
       });
     } catch (err) {
       setResult({
@@ -172,7 +175,7 @@ export function ToolsPlayground() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search tools..."
+              placeholder={t("tools.searchPlaceholder")}
               className="w-full pl-9 pr-3 py-2 bg-background border border-border rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
@@ -180,7 +183,7 @@ export function ToolsPlayground() {
 
         {/* Category pills */}
         <div className="px-3 py-2 flex flex-wrap gap-1.5 border-b border-border">
-          {CATEGORIES.map((cat) => (
+              {CATEGORIES.map((cat) => (
             <button
               key={cat}
               onClick={() => setCategory(cat)}
@@ -190,7 +193,7 @@ export function ToolsPlayground() {
                   : "bg-muted text-muted-foreground hover:bg-accent"
               }`}
             >
-              {cat}
+              {toolCategoryLabel(cat, t)}
             </button>
           ))}
         </div>
@@ -216,9 +219,9 @@ export function ToolsPlayground() {
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate flex items-center gap-1.5">
                       {isFav && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 shrink-0" />}
-                      {tool.label}
+                      {t(tool.labelKey)}
                     </div>
-                    <div className="text-[11px] text-muted-foreground truncate">{tool.desc}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">{t(tool.descKey)}</div>
                   </div>
                   {isActive && <ChevronRight className="w-4 h-4 text-primary shrink-0" />}
                 </button>
@@ -238,15 +241,15 @@ export function ToolsPlayground() {
                 <Icon className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <h2 className="text-lg font-bold">{selectedTool.label}</h2>
-                <p className="text-sm text-muted-foreground">{selectedTool.desc}</p>
+                <h2 className="text-lg font-bold">{t(selectedTool.labelKey)}</h2>
+                <p className="text-sm text-muted-foreground">{t(selectedTool.descKey)}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => toggleFavorite(selectedTool.tool)}
                 className="p-2 rounded hover:bg-accent transition-colors"
-                title={favorites.has(selectedTool.tool) ? "Remove from favorites" : "Add to favorites"}
+                title={favorites.has(selectedTool.tool) ? t("tools.removeFavorite") : t("tools.addFavorite")}
               >
                 {favorites.has(selectedTool.tool) ? (
                   <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
@@ -255,7 +258,7 @@ export function ToolsPlayground() {
                 )}
               </button>
               <Badge variant="secondary" className="font-mono text-[11px]">
-                {selectedTool.category}
+                {toolCategoryLabel(selectedTool.categoryKey, t)}
               </Badge>
             </div>
           </div>
@@ -266,15 +269,15 @@ export function ToolsPlayground() {
           {selectedTool.params.length > 0 && (
             <div className="mb-6">
               <h3 className="text-sm font-bold uppercase text-muted-foreground mb-3 tracking-wider">
-                Parameters
+                {t("tools.parameters")}
               </h3>
               <div className="space-y-3">
                 {selectedTool.params.map((param) => (
                   <div key={param.name}>
                     <label className="block text-sm font-medium mb-1.5">
-                      {param.label}
+                      {t(param.labelKey)}
                       {"optional" in param && param.optional && (
-                        <span className="text-muted-foreground text-xs ml-1">(optional)</span>
+                        <span className="text-muted-foreground text-xs ml-1">({t("tools.optional")})</span>
                       )}
                     </label>
                     <input
@@ -286,7 +289,7 @@ export function ToolsPlayground() {
                           [param.name]: e.target.value,
                         }))
                       }
-                      placeholder={param.placeholder || ""}
+                      placeholder={param.placeholderKey ? t(param.placeholderKey) : (param.placeholder || "")}
                       className="w-full px-3 py-2 bg-background border border-border rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
@@ -306,7 +309,7 @@ export function ToolsPlayground() {
             ) : (
               <Play className="w-4 h-4" />
             )}
-            {loading ? "Running..." : "Run Tool"}
+            {loading ? `${t("tools.runTool")}...` : t("tools.runTool")}
           </Button>
 
           {/* Result */}
@@ -314,14 +317,14 @@ export function ToolsPlayground() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold uppercase text-muted-foreground tracking-wider">
-                  Result
+                  {t("tools.result")}
                 </h3>
                 <div className="flex items-center gap-3 text-xs">
                   <Badge
                     variant={result.ok ? "default" : "destructive"}
                     className="text-[10px]"
                   >
-                    {result.ok ? "✅ Success" : "❌ Error"}
+                    {result.ok ? `✅ ${t("tools.success")}` : `❌ ${t("tools.error")}`}
                   </Badge>
                   <span className="text-muted-foreground font-mono">
                     {result.duration}ms
@@ -335,7 +338,7 @@ export function ToolsPlayground() {
                     ) : (
                       <Copy className="w-3.5 h-3.5" />
                     )}
-                    {copied ? "Copied!" : "Copy"}
+                    {copied ? t("tools.copied") : t("tools.copyResult")}
                   </button>
                 </div>
               </div>
@@ -352,7 +355,7 @@ export function ToolsPlayground() {
             <div className="text-center py-12 text-muted-foreground">
               <Wrench className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="text-sm">
-                Select a tool and press <strong>Run</strong> to see results
+                {t("tools.noResult")}
               </p>
             </div>
           )}

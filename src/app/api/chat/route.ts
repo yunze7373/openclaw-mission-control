@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OpenClawClient } from "@/lib/openclaw-client";
 
+export const dynamic = "force-dynamic";
+
 const DEFAULT_SESSION_KEY = "mission-control:general-chat";
 
 function getClient() {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Send, Plus, Bot, User, Loader2, RefreshCw } from "lucide-react";
+import { useLocale } from "@/components/locale-provider";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -48,6 +49,7 @@ function extractText(content: unknown): string {
 const SESSION_KEY = "mission-control:general-chat";
 
 export function ChatPanel() {
+  const { t } = useLocale();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -74,7 +76,7 @@ export function ChatPanel() {
       }
       setError(null);
     } catch (err) {
-      setError("Failed to load chat history");
+      setError(t("chat.failedHistory"));
       console.error(err);
     } finally {
       setLoading(false);
@@ -120,12 +122,12 @@ export function ChatPanel() {
       if (data.reply) {
         setMessages((prev) => [...prev, data.reply]);
       } else if (data.timeout) {
-        setError("Agent is still processing. Refresh to check for updates.");
+        setError(t("chat.stillProcessing"));
       }
 
       await fetchHistory();
     } catch (err) {
-      setError("Failed to send message");
+      setError(t("chat.failedSend"));
       console.error(err);
     } finally {
       setSending(false);
@@ -170,9 +172,9 @@ export function ChatPanel() {
             <Bot className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold tracking-tight">Agent Chat</h2>
+            <h2 className="text-lg font-semibold tracking-tight">{t("chat.title")}</h2>
             <p className="text-xs text-muted-foreground">
-              Direct conversation with your AI agent
+              {t("chat.subtitle")}
             </p>
           </div>
         </div>
@@ -180,7 +182,7 @@ export function ChatPanel() {
           <button
             onClick={fetchHistory}
             className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/5 transition-all"
-            title="Refresh"
+            title={t("common.refresh")}
           >
             <RefreshCw className="w-4 h-4" />
           </button>
@@ -189,7 +191,7 @@ export function ChatPanel() {
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-primary hover:bg-primary/5 border border-border transition-all"
           >
             <Plus className="w-4 h-4" />
-            New Session
+            {t("chat.newSession")}
           </button>
         </div>
       </div>
@@ -203,7 +205,7 @@ export function ChatPanel() {
         {loading && messages.length === 0 && (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <Loader2 className="w-5 h-5 animate-spin mr-2" />
-            Loading conversation…
+            {t("chat.loadingConversation")}
           </div>
         )}
 
@@ -213,11 +215,10 @@ export function ChatPanel() {
               <Bot className="w-8 h-8 text-primary/60" />
             </div>
             <h3 className="text-lg font-medium text-foreground mb-1">
-              Start a conversation
+              {t("chat.startConversation")}
             </h3>
             <p className="text-sm text-muted-foreground max-w-md">
-              Chat directly with your agent. Ask questions, give instructions, or
-              just say hello.
+              {t("chat.startConversationDesc")}
             </p>
           </div>
         )}
@@ -291,7 +292,7 @@ export function ChatPanel() {
             <div className="bg-card border border-border rounded-2xl rounded-tl-md px-4 py-3">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Agent is thinking…
+                {t("chat.agent")}...
               </div>
             </div>
           </div>
@@ -315,7 +316,7 @@ export function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a message…"
+            placeholder={t("chat.inputPlaceholder")}
             rows={1}
             disabled={sending}
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none outline-none max-h-32 py-1.5 disabled:opacity-50"
@@ -330,7 +331,7 @@ export function ChatPanel() {
           </button>
         </div>
         <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
-          Press Enter to send · Shift+Enter for new line
+          {t("chat.send")} · Shift+Enter
         </p>
       </div>
     </div>

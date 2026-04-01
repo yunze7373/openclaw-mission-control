@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Cpu, Check, RefreshCw, Sparkles, AlertTriangle } from "lucide-react";
+import { useLocale } from "@/components/locale-provider";
 
 interface GatewayModel {
   id: string;
@@ -76,6 +77,7 @@ export function getStoredModelPreference(): ModelPreference | null {
 }
 
 export function SettingsPanel() {
+  const { t } = useLocale();
   const [data, setData] = useState<ModelsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,10 +154,10 @@ export function SettingsPanel() {
           <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
             <Cpu className="w-5 h-5 text-primary" />
           </div>
-          Settings
+          {t("settings.title")}
         </h2>
         <p className="text-muted-foreground mt-2">
-          Configure your default AI model and provider for task processing.
+          {t("settings.subtitle")}
         </p>
       </div>
 
@@ -165,17 +167,16 @@ export function SettingsPanel() {
           <div>
             <h3 className="text-lg font-semibold flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-amber-400" />
-              AI Model &amp; Provider
+              {t("settings.sectionTitle")}
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Choose which AI model processes your tasks. This affects all newly
-              dispatched tasks.
+              {t("settings.sectionDesc")}
             </p>
           </div>
           <button
             onClick={fetchModels}
             className="p-2 rounded-lg hover:bg-muted/50 transition-colors text-muted-foreground hover:text-primary"
-            title="Refresh models"
+            title={t("settings.refreshModels")}
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -186,7 +187,7 @@ export function SettingsPanel() {
             <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-medium text-destructive">
-                Failed to load models
+                {t("settings.failedModels")}
               </p>
               <p className="text-xs text-destructive/80 mt-1">{error}</p>
             </div>
@@ -196,7 +197,7 @@ export function SettingsPanel() {
         {loading && !data && (
           <div className="flex items-center justify-center py-12 text-muted-foreground">
             <RefreshCw className="w-5 h-5 animate-spin mr-3" />
-            Loading models from gateway...
+            {t("settings.loadingModels")}
           </div>
         )}
 
@@ -206,7 +207,7 @@ export function SettingsPanel() {
             {currentPreference && (
               <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
                 <p className="text-xs font-medium text-primary/80 uppercase tracking-wider mb-1">
-                  Active Override
+                  {t("settings.activeOverride")}
                 </p>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -228,7 +229,7 @@ export function SettingsPanel() {
                     onClick={handleClearOverride}
                     className="text-xs text-muted-foreground hover:text-destructive transition-colors"
                   >
-                    Clear Override
+                    {t("settings.clearOverride")}
                   </button>
                 </div>
               </div>
@@ -236,7 +237,7 @@ export function SettingsPanel() {
 
             {/* Provider Selection */}
             <div>
-              <label className="block text-sm font-medium mb-3">Provider</label>
+              <label className="block text-sm font-medium mb-3">{t("settings.provider")}</label>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {data.providers.map((provider) => {
                   const count = data.byProvider[provider]?.length ?? 0;
@@ -267,7 +268,7 @@ export function SettingsPanel() {
                         {PROVIDER_LABELS[provider] || provider}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {count} model{count !== 1 ? "s" : ""}
+                        {t("settings.modelsCount", { count })}
                       </span>
                     </button>
                   );
@@ -279,9 +280,9 @@ export function SettingsPanel() {
             {selectedProvider && availableModels.length > 0 && (
               <div>
                 <label className="block text-sm font-medium mb-3">
-                  Model
+                  {t("settings.model")}
                   <span className="text-muted-foreground font-normal ml-2">
-                    ({availableModels.length} available)
+                    ({t("settings.modelsAvailable", { count: availableModels.length })})
                   </span>
                 </label>
                 <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
@@ -335,18 +336,15 @@ export function SettingsPanel() {
               >
                 {saved ? (
                   <span className="flex items-center gap-2">
-                    <Check className="w-4 h-4" /> Saved
+                    <Check className="w-4 h-4" /> {t("settings.saveSuccess")}
                   </span>
                 ) : (
-                  "Save as Default"
+                  t("settings.saveAsDefault")
                 )}
               </button>
               {!saved && selectedProvider && selectedModel && (
                 <span className="text-xs text-muted-foreground">
-                  New tasks will use{" "}
-                  <span className="font-mono text-primary">
-                    {selectedProvider}/{selectedModel}
-                  </span>
+                  {t("settings.applyNotice", { provider: selectedProvider, model: selectedModel })}
                 </span>
               )}
             </div>
@@ -356,19 +354,12 @@ export function SettingsPanel() {
 
       {/* Info Card */}
       <div className="bg-card/50 border border-border/50 rounded-xl p-5 text-sm text-muted-foreground space-y-2">
-        <p className="font-medium text-foreground">How model selection works</p>
+        <p className="font-medium text-foreground">{t("settings.helpTitle")}</p>
         <ul className="list-disc list-inside space-y-1 text-xs">
-          <li>
-            Your selection is saved locally and applied when dispatching new tasks
-          </li>
-          <li>
-            The session is patched with the model override before the agent starts
-            processing
-          </li>
-          <li>Existing in-progress tasks keep their original model assignment</li>
-          <li>
-            Clear the override to use the gateway&apos;s default model for new tasks
-          </li>
+          <li>{t("settings.help1")}</li>
+          <li>{t("settings.help2")}</li>
+          <li>{t("settings.help3")}</li>
+          <li>{t("settings.help4")}</li>
         </ul>
       </div>
     </div>

@@ -12,6 +12,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useLocale } from "@/components/locale-provider";
 
 interface UsageData {
   usage: Record<string, unknown> | null;
@@ -128,6 +129,7 @@ function HorizontalBar({
 }
 
 export function CostDashboard() {
+  const { t } = useLocale();
   const [data, setData] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState("today");
@@ -183,9 +185,9 @@ export function CostDashboard() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-bold">Usage & Costs</h2>
+          <h2 className="text-xl font-bold">{t("usage.title")}</h2>
           <p className="text-sm text-muted-foreground">
-            Track your AI spending and token consumption
+            {t("usage.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -201,7 +203,7 @@ export function CostDashboard() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {p === "today" ? "Today" : p === "7d" ? "7 Days" : "30 Days"}
+                {p === "today" ? t("common.today") : p === "7d" ? t("common.sevenDays") : t("common.thirtyDays")}
               </button>
             ))}
           </div>
@@ -217,7 +219,7 @@ export function CostDashboard() {
             ) : (
               <RefreshCw className="w-3.5 h-3.5" />
             )}
-            Refresh
+            {t("common.refresh")}
           </Button>
         </div>
       </div>
@@ -225,31 +227,31 @@ export function CostDashboard() {
       {/* Stat cards */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <StatCard
-          label="Total Cost"
+          label={t("usage.totalCost")}
           value={formatCost(totalCost)}
-          subtitle="this period"
+          subtitle={t("usage.thisPeriod")}
           icon={DollarSign}
           trend={totalCost > 0 ? "up" : "flat"}
           accentColor="bg-green-600"
         />
         <StatCard
-          label="Input Tokens"
+          label={t("usage.inputTokens")}
           value={formatTokens(inputTokens)}
-          subtitle="prompts sent"
+          subtitle={t("usage.promptsSent")}
           icon={TrendingUp}
           trend={inputTokens > 0 ? "up" : "flat"}
         />
         <StatCard
-          label="Output Tokens"
+          label={t("usage.outputTokens")}
           value={formatTokens(outputTokens)}
-          subtitle="responses received"
+          subtitle={t("usage.responsesReceived")}
           icon={Zap}
           trend={outputTokens > 0 ? "up" : "flat"}
         />
         <StatCard
-          label="Active Sessions"
+          label={t("usage.activeSessions")}
           value={String(sessions)}
-          subtitle="running now"
+          subtitle={t("usage.runningNow")}
           icon={BarChart3}
           trend="flat"
         />
@@ -260,13 +262,13 @@ export function CostDashboard() {
         {/* Usage Over Time */}
         <div className="col-span-2 glass-panel rounded-lg p-5">
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">
-            Usage Over Time
+            {t("usage.usageOverTime")}
           </h3>
           {totalTokens > 0 ? (
             <BarChart data={dailyData} maxHeight={140} />
           ) : (
             <div className="flex items-center justify-center h-[140px] text-sm text-muted-foreground">
-              No usage data yet
+              {t("usage.noData")}
             </div>
           )}
         </div>
@@ -274,7 +276,7 @@ export function CostDashboard() {
         {/* By Agent */}
         <div className="glass-panel rounded-lg p-5">
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">
-            By Agent
+            {t("usage.byAgent")}
           </h3>
           <HorizontalBar items={agentBreakdown} />
         </div>
@@ -284,7 +286,7 @@ export function CostDashboard() {
       {data && (
         <details className="mt-6">
           <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-            Show raw gateway response
+            {t("usage.rawResponse")}
           </summary>
           <pre className="mt-2 bg-muted/50 rounded border border-border p-3 text-xs font-mono overflow-auto max-h-48">
             {JSON.stringify(data, null, 2)}

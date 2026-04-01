@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from "uuid";
 import { getOpenClawClient } from "@/lib/openclaw-client";
 import { listTasks, updateTask, addComment, logActivity, listComments } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Extract text content from chat message content.
  * The gateway may return content as a string OR as an array of content blocks

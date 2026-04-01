@@ -10,6 +10,8 @@ import {
   listComments,
 } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // POST /api/tasks/dispatch - Send a task to an agent for processing
 export async function POST(request: NextRequest) {
   try {

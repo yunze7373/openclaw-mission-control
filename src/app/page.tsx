@@ -34,6 +34,9 @@ import { CronScheduler } from "@/components/views/cron-scheduler";
 import { LogsViewer } from "@/components/views/logs-viewer";
 import { SettingsPanel, getStoredModelPreference } from "@/components/views/settings-panel";
 import { ChatPanel } from "@/components/views/chat-panel";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { useLocale } from "@/components/locale-provider";
+import { taskStatusLabel } from "@/lib/i18n-mappers";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -104,41 +107,14 @@ interface GatewayStatus {
   connected: boolean;
   agentCount: number;
   cronJobCount: number;
+  error?: string;
 }
 
 type ColumnId = "inbox" | "assigned" | "in_progress" | "review" | "done";
 
-const COLUMNS: { id: ColumnId; label: string }[] = [
-  { id: "inbox", label: "INBOX" },
-  { id: "assigned", label: "ASSIGNED" },
-  { id: "in_progress", label: "IN PROGRESS" },
-  { id: "review", label: "REVIEW" },
-  { id: "done", label: "DONE" },
-];
+const COLUMNS: ColumnId[] = ["inbox", "assigned", "in_progress", "review", "done"];
 
 // --- Helpers ---
-
-function timeAgo(dateStr: string): string {
-  const date = new Date(dateStr + "Z");
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-function formatTime(dateStr: string): string {
-  const date = new Date(dateStr + "Z");
-  return date.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-}
 
 function getColumnDotColor(id: ColumnId): string {
   switch (id) {
@@ -152,11 +128,11 @@ function getColumnDotColor(id: ColumnId): string {
 
 function getPriorityStyle(priority: string) {
   switch (priority) {
-    case "urgent": return { className: "text-red-400 bg-red-400/10 border-red-400/20", label: "URGENT" };
-    case "high": return { className: "text-red-400 bg-red-400/10 border-red-400/20", label: "HIGH" };
-    case "medium": return { className: "text-orange-400 bg-orange-400/10 border-orange-400/20", label: "MED" };
-    case "low": return { className: "text-primary bg-primary/10 border-primary/20", label: "LOW" };
-    default: return { className: "text-slate-400 bg-slate-400/10 border-slate-400/20", label: priority.toUpperCase() };
+    case "urgent": return { className: "text-red-400 bg-red-400/10 border-red-400/20", labelKey: "dashboard.priority.urgent" };
+    case "high": return { className: "text-red-400 bg-red-400/10 border-red-400/20", labelKey: "dashboard.priority.high" };
+    case "medium": return { className: "text-orange-400 bg-orange-400/10 border-orange-400/20", labelKey: "dashboard.priority.medium" };
+    case "low": return { className: "text-primary bg-primary/10 border-primary/20", labelKey: "dashboard.priority.low" };
+    default: return { className: "text-slate-400 bg-slate-400/10 border-slate-400/20", labelKey: "" };
   }
 }
 
@@ -171,18 +147,19 @@ function getActivityColor(type: string): string {
 }
 
 function getActivityLabel(type: string): string {
-  if (type.includes("created")) return "Info:";
-  if (type.includes("assigned")) return "Agent:";
-  if (type.includes("progress")) return "Agent:";
-  if (type.includes("review")) return "System:";
-  if (type.includes("agent")) return "Agent:";
-  return "System:";
+  if (type.includes("created")) return "common.status";
+  if (type.includes("assigned")) return "approvals.agent";
+  if (type.includes("progress")) return "approvals.agent";
+  if (type.includes("review")) return "common.system";
+  if (type.includes("agent")) return "approvals.agent";
+  return "common.system";
 }
 
 // --- Theme Toggle ---
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
+  const { t } = useLocale();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return <div className="w-8 h-8" />;
@@ -198,7 +175,7 @@ function ThemeToggle() {
         </button>
       </TooltipTrigger>
       <TooltipContent side="bottom">
-        <p>{theme === "dark" ? "Light mode" : "Dark mode"}</p>
+        <p>{theme === "dark" ? t("common.lightMode") : t("common.darkMode")}</p>
       </TooltipContent>
     </Tooltip>
   );
@@ -217,6 +194,7 @@ function getViewFromHash(): ViewId {
 // --- Main Component ---
 
 export default function Dashboard() {
+  const { t, formatClockTime } = useLocale();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -225,6 +203,7 @@ export default function Dashboard() {
     agentCount: 0,
     cronJobCount: 0,
   });
+  const [backendOnline, setBackendOnline] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDispatchModal, setShowDispatchModal] = useState<Task | null>(null);
   const [showTaskDetail, setShowTaskDetail] = useState<Task | null>(null);
@@ -275,8 +254,10 @@ export default function Dashboard() {
       const res = await fetch("/api/openclaw/status");
       const data = await res.json();
       setGatewayStatus(data);
+      setBackendOnline(res.ok);
     } catch {
       setGatewayStatus({ connected: false, agentCount: 0, cronJobCount: 0 });
+      setBackendOnline(false);
     }
   }, []);
 
@@ -376,15 +357,15 @@ export default function Dashboard() {
   const getColumnTasks = (status: string) => tasks.filter((t) => t.status === status);
 
   const NAV_ITEMS = [
-    { id: "board" as const, icon: LayoutDashboard, label: "Dashboard" },
-    { id: "chat" as const, icon: MessageSquare, label: "Chat" },
-    { id: "agents" as const, icon: Bot, label: "Agents" },
-    { id: "missions" as const, icon: Rocket, label: "Missions" },
-    { id: "tools" as const, icon: Wrench, label: "Tools" },
-    { id: "usage" as const, icon: DollarSign, label: "Usage" },
-    { id: "approvals" as const, icon: Shield, label: "Approvals" },
-    { id: "cron" as const, icon: Clock, label: "Schedules" },
-    { id: "logs" as const, icon: FileText, label: "Logs" },
+    { id: "board" as const, icon: LayoutDashboard, label: t("nav.board") },
+    { id: "chat" as const, icon: MessageSquare, label: t("nav.chat") },
+    { id: "agents" as const, icon: Bot, label: t("nav.agents") },
+    { id: "missions" as const, icon: Rocket, label: t("nav.missions") },
+    { id: "tools" as const, icon: Wrench, label: t("nav.tools") },
+    { id: "usage" as const, icon: DollarSign, label: t("nav.usage") },
+    { id: "approvals" as const, icon: Shield, label: t("nav.approvals") },
+    { id: "cron" as const, icon: Clock, label: t("nav.cron") },
+    { id: "logs" as const, icon: FileText, label: t("nav.logs") },
   ];
 
   return (
@@ -450,7 +431,7 @@ export default function Dashboard() {
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
-              <p>Settings</p>
+              <p>{t("nav.settings")}</p>
             </TooltipContent>
           </Tooltip>
           <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary border border-primary/30">
@@ -469,21 +450,22 @@ export default function Dashboard() {
           <div className="flex items-center gap-4">
             <h1 className="text-lg font-bold tracking-wider uppercase flex items-center gap-2">
               <span className="text-primary font-mono text-xl">{"//"}</span>
-              Mission Control
+              {t("dashboard.title")}
             </h1>
             <Separator orientation="vertical" className="h-6" />
             <div className="flex items-center gap-2 text-xs font-mono text-primary">
               <span className="relative flex h-2 w-2">
-                {gatewayStatus.connected && (
+                {backendOnline && (
                   <span className="ping-slow absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
                 )}
-                <span className={`relative inline-flex rounded-full h-2 w-2 ${gatewayStatus.connected ? "bg-primary" : "bg-destructive"}`} />
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${backendOnline ? "bg-primary" : "bg-destructive"}`} />
               </span>
-              {gatewayStatus.connected ? "SYSTEM ONLINE" : "OFFLINE"}
+              {backendOnline ? t("dashboard.backendOnline") : t("dashboard.backendOffline")}
             </div>
           </div>
 
           <div className="flex items-center gap-4 text-xs font-mono">
+            <LanguageSwitcher />
             {/* Connection pill */}
             <div className="flex items-center gap-2 text-muted-foreground bg-muted px-3 py-1.5 rounded border border-border">
               {gatewayStatus.connected ? (
@@ -491,17 +473,17 @@ export default function Dashboard() {
               ) : (
                 <WifiOff className="w-3.5 h-3.5 text-destructive" />
               )}
-              <span>ws://127.0.0.1:18789</span>
+              <span>{gatewayStatus.connected ? t("dashboard.gatewayConnected") : t("dashboard.gatewayDisconnected")}</span>
             </div>
 
             {/* Stats */}
             <div className="flex items-center gap-4">
               <div className="flex flex-col items-end leading-none gap-1">
-                <span className="text-muted-foreground text-[10px] uppercase">Agents</span>
+                <span className="text-muted-foreground text-[10px] uppercase">{t("dashboard.agentCount")}</span>
                 <span className="font-bold">{gatewayStatus.agentCount}</span>
               </div>
               <div className="flex flex-col items-end leading-none gap-1">
-                <span className="text-muted-foreground text-[10px] uppercase">Tasks</span>
+                <span className="text-muted-foreground text-[10px] uppercase">{t("dashboard.createTask")}</span>
                 <span className="text-primary font-bold">{tasks.length}</span>
               </div>
             </div>
@@ -521,7 +503,7 @@ export default function Dashboard() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p>{terminalOpen ? "Hide terminal" : "Show terminal"}</p>
+                <p>{terminalOpen ? t("dashboard.closeTerminal") : t("dashboard.openTerminal")}</p>
               </TooltipContent>
             </Tooltip>
             <ThemeToggle />
@@ -587,11 +569,11 @@ export default function Dashboard() {
             <ScrollArea className="flex-1">
               <div className="p-4 space-y-4 text-muted-foreground font-mono">
                 {activity.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground/50">
-                    <Terminal className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p>Waiting for activity...</p>
-                  </div>
-                ) : (
+                    <div className="text-center py-8 text-muted-foreground/50">
+                      <Terminal className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      <p>{t("dashboard.noActivity")}</p>
+                    </div>
+                  ) : (
                   activity.map((entry, i) => (
                     <div
                       key={entry.id}
@@ -599,11 +581,11 @@ export default function Dashboard() {
                       style={{ opacity: Math.max(0.5, 1 - i * 0.06) }}
                     >
                       <span className="text-muted-foreground/60 shrink-0 tabular-nums">
-                        [{formatTime(entry.created_at)}]
+                        [{formatClockTime(entry.created_at)}]
                       </span>
                       <div className="wrap-break-word min-w-0">
                         <span className={getActivityColor(entry.type)}>
-                          {getActivityLabel(entry.type)}
+                          {t(getActivityLabel(entry.type))}:
                         </span>{" "}
                         <span className="text-foreground">
                           {entry.message}
@@ -627,7 +609,7 @@ export default function Dashboard() {
                 <span className="text-muted-foreground">$</span>
                 <input
                   className="bg-transparent border-none text-foreground focus:ring-0 focus:outline-none p-0 text-xs w-full font-mono placeholder:text-muted-foreground/40"
-                  placeholder="Enter command..."
+                  placeholder={t("dashboard.openTerminal")}
                   type="text"
                 />
               </div>
@@ -692,17 +674,26 @@ function KanbanBoard({
   onMoveToDown?: (id: string) => void;
   onCreateTask?: () => void;
 }) {
+  const { t } = useLocale();
+  const columnLabels: Record<ColumnId, string> = {
+    inbox: t("dashboard.columns.inbox"),
+    assigned: t("dashboard.columns.assigned"),
+    in_progress: t("dashboard.columns.inProgress"),
+    review: t("dashboard.columns.review"),
+    done: t("dashboard.columns.done"),
+  };
+
   return (
     <div className="flex-1 overflow-x-auto overflow-y-hidden p-6">
       <div className="flex h-full gap-4">
-        {columns.map((col) => {
-          const colTasks = getColumnTasks(col.id);
-          const isActive = col.id === "in_progress";
-          const isDragOver = dragOverColumn === col.id;
+        {columns.map((columnId) => {
+          const colTasks = getColumnTasks(columnId);
+          const isActive = columnId === "in_progress";
+          const isDragOver = dragOverColumn === columnId;
 
           return (
             <div
-              key={col.id}
+              key={columnId}
               className={`flex-1 flex flex-col min-w-0 rounded-lg border backdrop-blur-sm ${
                 isActive
                   ? "border-t-2 border-t-primary border-x-border border-b-border column-glow"
@@ -712,9 +703,9 @@ function KanbanBoard({
               {/* Column Header */}
               <div className="p-3 border-b border-border/50 flex justify-between items-center relative z-10">
                 <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${getColumnDotColor(col.id)}`} />
+                  <span className={`w-2 h-2 rounded-full ${getColumnDotColor(columnId)}`} />
                   <h3 className={`font-bold text-sm tracking-wide ${isActive ? "text-primary" : ""}`}>
-                    {col.label}
+                    {columnLabels[columnId]}
                   </h3>
                   <span className={`text-[10px] px-1.5 rounded font-mono border ${
                     isActive
@@ -724,14 +715,14 @@ function KanbanBoard({
                     {colTasks.length}
                   </span>
                 </div>
-                {col.id === "inbox" ? (
+                {columnId === "inbox" ? (
                   <button
                     onClick={onCreateTask}
                     className="text-muted-foreground hover:text-primary transition-colors"
                   >
                     <Plus className="w-4 h-4" />
                   </button>
-                ) : col.id === "done" ? (
+                ) : columnId === "done" ? (
                   <CheckCircle2 className="w-4 h-4 text-muted-foreground" />
                 ) : (
                   <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
@@ -742,13 +733,13 @@ function KanbanBoard({
               <ScrollArea className="flex-1">
                 <div
                   className="p-3 flex flex-col gap-3 min-h-[120px] relative z-10"
-                  onDragOver={(e) => onDragOver(e, col.id)}
+                  onDragOver={(e) => onDragOver(e, columnId)}
                   onDragLeave={onDragLeave}
-                  onDrop={(e) => onDrop(e, col.id)}
+                  onDrop={(e) => onDrop(e, columnId)}
                 >
                   {colTasks.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground/40 text-xs">
-                      Drop tasks here
+                      {t("dashboard.dragHint")}
                     </div>
                   ) : (
                     colTasks.map((task) => (
@@ -793,12 +784,14 @@ function TaskCard({
   onClick: () => void;
   onMoveToDown?: () => void;
 }) {
+  const { t, formatRelativeTime } = useLocale();
   const showDispatch = task.status === "inbox" && !task.assigned_agent_id;
   const showDone = task.status === "review";
   const isReview = task.status === "review";
   const isAgentWorking = isInProgress && !!task.assigned_agent_id;
   const isDone = task.status === "done";
   const priority = getPriorityStyle(task.priority);
+  const priorityLabel = priority.labelKey ? t(priority.labelKey) : task.priority.toUpperCase();
 
   return (
     <div
@@ -823,7 +816,7 @@ function TaskCard({
       {/* Header: priority + ID */}
       <div className={`flex justify-between items-start mb-2 ${isInProgress && task.assigned_agent_id ? "pl-2" : ""}`}>
         <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${priority.className} ${isDone ? "line-through" : ""}`}>
-          {priority.label}
+          {priorityLabel}
         </span>
         <span className={`text-[10px] font-mono text-muted-foreground ${isDone ? "line-through" : ""}`}>
           #{task.sort_order}
@@ -874,10 +867,10 @@ function TaskCard({
 
         <div className="flex items-center gap-1">
           {isAgentWorking && (
-            <span className="text-[10px] font-mono text-primary animate-pulse">🤖 Working...</span>
+            <span className="text-[10px] font-mono text-primary animate-pulse">🤖 {t("common.running")}</span>
           )}
           {isReview && (
-            <span className="text-[10px] font-mono text-amber-500">📋 Needs Review</span>
+            <span className="text-[10px] font-mono text-amber-500">📋 {t("dashboard.columns.review")}</span>
           )}
           {showDispatch && (
             <Button
@@ -886,7 +879,7 @@ function TaskCard({
               onClick={(e) => { e.stopPropagation(); onDispatch(); }}
               className="h-6 px-2 text-[10px] text-primary hover:text-primary"
             >
-              <Send className="w-3 h-3 mr-1" /> Dispatch
+              <Send className="w-3 h-3 mr-1" /> {t("dashboard.dispatchTask")}
             </Button>
           )}
           {showDone && onMoveToDown && (
@@ -896,14 +889,14 @@ function TaskCard({
               onClick={(e) => { e.stopPropagation(); onMoveToDown(); }}
               className="h-6 px-2 text-[10px] text-green-500 hover:text-green-400"
             >
-              <CheckCircle2 className="w-3 h-3 mr-1" /> Done
+              <CheckCircle2 className="w-3 h-3 mr-1" /> {t("dashboard.columns.done")}
             </Button>
           )}
           {!isDone && (
-            <span className="text-[10px] font-mono text-muted-foreground">{timeAgo(task.created_at)}</span>
+            <span className="text-[10px] font-mono text-muted-foreground">{formatRelativeTime(task.created_at)}</span>
           )}
           {isDone && (
-            <span className="text-[10px] font-mono text-green-600/70">{timeAgo(task.updated_at)}</span>
+            <span className="text-[10px] font-mono text-green-600/70">{formatRelativeTime(task.updated_at)}</span>
           )}
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
@@ -925,6 +918,7 @@ function CreateTaskModal({ open, onOpenChange, onCreate, agents }: {
   onCreate: (data: { title: string; description: string; priority: string; assigned_agent_id?: string }) => void;
   agents: Agent[];
 }) {
+  const { t } = useLocale();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
@@ -949,55 +943,55 @@ function CreateTaskModal({ open, onOpenChange, onCreate, agents }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>Create New Task</DialogTitle>
-          <DialogDescription>Add a new task to the inbox.</DialogDescription>
+          <DialogTitle>{t("dashboard.createTask")}</DialogTitle>
+          <DialogDescription>{t("dashboard.dragHint")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Title</label>
+              <label className="text-sm font-medium">{t("dashboard.taskTitle")}</label>
               <input
                 type="text"
                 className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="What needs to be done?"
+                placeholder={t("dashboard.taskTitle")}
                 autoFocus
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Description</label>
+              <label className="text-sm font-medium">{t("dashboard.taskDescription")}</label>
               <textarea
                 className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring min-h-[80px] resize-y"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optional details..."
+                placeholder={t("dashboard.taskDescription")}
               />
             </div>
             <div className="flex gap-3">
               <div className="space-y-2 flex-1">
-                <label className="text-sm font-medium">Priority</label>
+                <label className="text-sm font-medium">{t("dashboard.taskPriority")}</label>
                 <Select value={priority} onValueChange={setPriority}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
+                    <SelectItem value="low">{t("dashboard.priority.low")}</SelectItem>
+                    <SelectItem value="medium">{t("dashboard.priority.medium")}</SelectItem>
+                    <SelectItem value="high">{t("dashboard.priority.high")}</SelectItem>
+                    <SelectItem value="urgent">{t("dashboard.priority.urgent")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2 flex-1">
-                <label className="text-sm font-medium">Assign to Agent</label>
+                <label className="text-sm font-medium">{t("dashboard.assignAgent")}</label>
                 <Select value={agentId} onValueChange={setAgentId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="No agent" />
+                    <SelectValue placeholder={t("dashboard.unassigned")} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">
-                      <span className="text-muted-foreground">Unassigned</span>
+                      <span className="text-muted-foreground">{t("dashboard.unassigned")}</span>
                     </SelectItem>
                     {agents.map((a) => (
                       <SelectItem key={a.id} value={a.id}>
@@ -1013,8 +1007,8 @@ function CreateTaskModal({ open, onOpenChange, onCreate, agents }: {
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit">Create Task</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
+            <Button type="submit">{t("dashboard.createTask")}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1030,6 +1024,7 @@ function DispatchModal({ task, agents, onClose, onDispatch }: {
   onClose: () => void;
   onDispatch: (taskId: string, agentId: string) => Promise<unknown>;
 }) {
+  const { t } = useLocale();
   const [selectedAgent, setSelectedAgent] = useState(agents[0]?.id || "");
   const [dispatching, setDispatching] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -1051,17 +1046,17 @@ function DispatchModal({ task, agents, onClose, onDispatch }: {
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Send className="w-5 h-5 text-primary" /> Dispatch Task to Agent
+            <Send className="w-5 h-5 text-primary" /> {t("dashboard.dispatchTask")}
           </DialogTitle>
         </DialogHeader>
 
         {/* Task summary */}
         <div className="p-3 rounded-md bg-muted border border-border">
           <div className="font-medium text-sm">{task.title}</div>
-          <div className="text-xs text-muted-foreground mt-1">{task.description || "No description"}</div>
+          <div className="text-xs text-muted-foreground mt-1">{task.description || t("dashboard.taskDescription")}</div>
           <div className="mt-2">
             <Badge variant="outline" className={getPriorityStyle(task.priority).className}>
-              {task.priority}
+              {t(getPriorityStyle(task.priority).labelKey || "dashboard.taskPriority")}
             </Badge>
           </div>
         </div>
@@ -1069,12 +1064,12 @@ function DispatchModal({ task, agents, onClose, onDispatch }: {
         {agents.length === 0 ? (
           <div className="flex items-center gap-2 text-sm text-yellow-500 p-3 bg-yellow-500/10 rounded-md border border-yellow-500/20">
             <AlertTriangle className="w-4 h-4" />
-            No agents available. Go to Agents page to create one first.
+            {t("nav.agents")} unavailable.
           </div>
         ) : (
           <>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Select Agent</label>
+              <label className="text-sm font-medium">{t("dashboard.assignAgent")}</label>
               <Select value={selectedAgent} onValueChange={setSelectedAgent}>
                 <SelectTrigger>
                   <SelectValue />
@@ -1099,7 +1094,7 @@ function DispatchModal({ task, agents, onClose, onDispatch }: {
                   ? "bg-green-500/10 text-green-500 border border-green-500/20"
                   : "bg-destructive/10 text-destructive border border-destructive/20"
               }`}>
-                {result === "success" ? "✅ Task dispatched! Agent is processing..." : "❌ Dispatch failed"}
+                {result === "success" ? `✅ ${t("dashboard.dispatchTask")}` : `❌ ${t("dashboard.dispatchTask")}`}
               </div>
             )}
           </>
@@ -1107,11 +1102,11 @@ function DispatchModal({ task, agents, onClose, onDispatch }: {
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            {result ? "Close" : "Cancel"}
+            {result ? t("common.close") : t("common.cancel")}
           </Button>
           {agents.length > 0 && !result && (
             <Button onClick={handleDispatch} disabled={dispatching}>
-              {dispatching ? "Dispatching..." : "Send to Agent"}
+              {dispatching ? `${t("dashboard.dispatchTask")}...` : t("dashboard.dispatchTask")}
             </Button>
           )}
         </DialogFooter>
@@ -1128,6 +1123,7 @@ function TaskDetailModal({ task, onClose, onMoveToDone, onRefresh }: {
   onMoveToDone: () => void;
   onRefresh: () => void;
 }) {
+  const { t, formatRelativeTime } = useLocale();
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState("");
@@ -1215,20 +1211,20 @@ function TaskDetailModal({ task, onClose, onMoveToDone, onRefresh }: {
             {task.title}
             {isAgentWorking && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/30 text-[11px] text-primary font-mono animate-pulse">
-                🤖 Agent working...
+                🤖 {t("common.running")}
               </span>
             )}
             {isReview && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-500 font-mono">
-                📋 Ready for review
+                📋 {t("dashboard.columns.review")}
               </span>
             )}
           </DialogTitle>
           <DialogDescription className="flex items-center gap-2 pt-1">
             <Badge variant="outline" className={priority.className}>
-              {priority.label}
+              {priority.labelKey ? t(priority.labelKey) : task.priority}
             </Badge>
-            <span className="text-xs uppercase text-muted-foreground">{task.status.replace("_", " ")}</span>
+            <span className="text-xs uppercase text-muted-foreground">{taskStatusLabel(task.status, t)}</span>
             {task.assigned_agent_id && (
               <Badge variant="secondary" className="gap-1">
                 <Bot className="w-3 h-3" /> {task.assigned_agent_id}
@@ -1256,7 +1252,7 @@ function TaskDetailModal({ task, onClose, onMoveToDone, onRefresh }: {
             </div>
             <div>
               <div className="text-sm font-medium text-primary">{task.assigned_agent_id} is working on this task</div>
-              <div className="text-[11px] text-muted-foreground">Response will appear below when complete. Task will auto-move to Review.</div>
+              <div className="text-[11px] text-muted-foreground">{t("dashboard.recentActivity")}</div>
             </div>
           </div>
         )}
@@ -1267,11 +1263,9 @@ function TaskDetailModal({ task, onClose, onMoveToDone, onRefresh }: {
             Activity ({comments.length})
           </h4>
           {loading ? (
-            <div className="text-sm text-muted-foreground animate-pulse py-4 text-center">Loading...</div>
+            <div className="text-sm text-muted-foreground animate-pulse py-4 text-center">{t("common.loading")}</div>
           ) : comments.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-4 text-center">
-              No activity yet. Assign an agent to start working on this task.
-            </div>
+            <div className="text-sm text-muted-foreground py-4 text-center">{t("dashboard.noActivity")}</div>
           ) : (
             <ScrollArea className="max-h-[250px]" ref={scrollRef}>
               <div className="space-y-2">
@@ -1289,13 +1283,13 @@ function TaskDetailModal({ task, onClose, onMoveToDone, onRefresh }: {
                     <div className={`text-[11px] font-bold uppercase mb-1 ${
                       c.author_type === "agent" ? "text-primary" : c.author_type === "system" ? "text-blue-400" : "text-amber-500"
                     }`}>
-                      {c.author_type === "agent" ? `🤖 ${c.agent_id || "Agent"}` : c.author_type === "system" ? "⚙️ System" : "👤 You"}
+                      {c.author_type === "agent" ? `🤖 ${c.agent_id || t("chat.agent")}` : c.author_type === "system" ? `⚙️ ${t("common.system")}` : `👤 ${t("chat.you")}`}
                     </div>
                     <div className="text-foreground whitespace-pre-wrap leading-relaxed text-[13px]">
                       {c.content.length > 800 ? c.content.slice(0, 800) + "..." : c.content}
                     </div>
                     <div className="text-[11px] text-muted-foreground mt-1">
-                      {timeAgo(c.created_at)}
+                      {formatRelativeTime(c.created_at)}
                     </div>
                   </div>
                 ))}
@@ -1312,8 +1306,8 @@ function TaskDetailModal({ task, onClose, onMoveToDone, onRefresh }: {
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addUserComment()}
-            placeholder="Add a comment..."
-          />
+            placeholder={t("dashboard.taskDescription")}
+            />
           <Button
             size="sm"
             disabled={!newComment.trim() || sendingComment}
@@ -1326,30 +1320,30 @@ function TaskDetailModal({ task, onClose, onMoveToDone, onRefresh }: {
         {/* Rework Section (visible in review status) */}
         {isReview && showRework && (
           <div className="space-y-2 p-3 rounded-md bg-amber-500/5 border border-amber-500/20">
-            <label className="text-sm font-medium text-amber-500">🔄 Rework Instructions</label>
+            <label className="text-sm font-medium text-amber-500">🔄 {t("dashboard.columns.review")}</label>
             <textarea
               className="w-full px-3 py-2 rounded-md border border-amber-500/30 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[80px] resize-y"
               value={reworkFeedback}
               onChange={(e) => setReworkFeedback(e.target.value)}
-              placeholder="Describe what needs to be changed or improved..."
+              placeholder={t("dashboard.taskDescription")}
               autoFocus
             />
             <div className="flex gap-2 justify-end">
-              <Button variant="ghost" size="sm" onClick={() => { setShowRework(false); setReworkFeedback(""); }}>Cancel</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setShowRework(false); setReworkFeedback(""); }}>{t("common.cancel")}</Button>
               <Button
                 size="sm"
                 disabled={!reworkFeedback.trim() || reworking}
                 onClick={requestRework}
                 className="bg-amber-600 hover:bg-amber-700 text-white"
               >
-                {reworking ? "Sending..." : "Send to Agent"}
+                {reworking ? `${t("chat.send")}...` : t("chat.send")}
               </Button>
             </div>
           </div>
         )}
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button variant="outline" onClick={onClose}>{t("common.close")}</Button>
           {isReview && !showRework && (
             <Button
               variant="outline"
@@ -1376,6 +1370,7 @@ function TaskDetailModal({ task, onClose, onMoveToDone, onRefresh }: {
 // --- Agents View ---
 
 function AgentsView({ status, agents, onRefresh }: { status: GatewayStatus; agents: Agent[]; onRefresh: () => void }) {
+  const { t } = useLocale();
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newId, setNewId] = useState("");
@@ -1417,8 +1412,8 @@ function AgentsView({ status, agents, onRefresh }: { status: GatewayStatus; agen
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center space-y-3">
           <WifiOff className="w-12 h-12 mx-auto text-muted-foreground/30" />
-          <p className="text-muted-foreground">OpenClaw Gateway not connected</p>
-          <p className="text-xs text-muted-foreground/70">Make sure the gateway is running at ws://127.0.0.1:18789</p>
+          <p className="text-muted-foreground">{t("dashboard.gatewayDisconnected")}</p>
+          <p className="text-xs text-muted-foreground/70">ws://127.0.0.1:18789</p>
         </div>
       </div>
     );
@@ -1429,24 +1424,24 @@ function AgentsView({ status, agents, onRefresh }: { status: GatewayStatus; agen
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Total Agents</div>
+          <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{t("dashboard.agentCount")}</div>
           <div className="text-2xl font-bold text-primary">{agents.length}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Cron Jobs</div>
+          <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{t("dashboard.cronCount")}</div>
           <div className="text-2xl font-bold text-primary">{status.cronJobCount}</div>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Gateway</div>
+          <div className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{t("common.status")}</div>
           <div className="text-lg font-bold text-green-500 flex items-center gap-2">
-            <Wifi className="w-4 h-4" /> Online
+            <Wifi className="w-4 h-4" /> {t("dashboard.gatewayConnected")}
           </div>
         </div>
       </div>
 
       {/* Create button */}
       <Button onClick={() => setShowCreate(!showCreate)} variant={showCreate ? "outline" : "default"}>
-        {showCreate ? "Cancel" : <><Plus className="w-4 h-4 mr-1" /> Create Agent</>}
+        {showCreate ? t("common.cancel") : <><Plus className="w-4 h-4 mr-1" /> {t("nav.agents")}</>}
       </Button>
 
       {/* Create form */}
@@ -1476,11 +1471,11 @@ function AgentsView({ status, agents, onRefresh }: { status: GatewayStatus; agen
                 ? "bg-green-500/10 text-green-500"
                 : "bg-destructive/10 text-destructive"
             }`}>
-              {createResult === "success" ? "✅ Agent created successfully!" : `❌ ${createResult.replace("error:", "")}`}
+              {createResult === "success" ? `✅ ${t("nav.agents")}` : `❌ ${createResult.replace("error:", "")}`}
             </div>
           )}
           <Button onClick={handleCreate} disabled={creating}>
-            {creating ? "Creating..." : "Create Agent in OpenClaw"}
+            {creating ? `${t("nav.agents")}...` : `Create ${t("nav.agents")} in OpenClaw`}
           </Button>
         </div>
       )}
@@ -1512,6 +1507,7 @@ function AgentsView({ status, agents, onRefresh }: { status: GatewayStatus; agen
 // --- Missions View ---
 
 function MissionsView() {
+  const { t, formatRelativeTime } = useLocale();
   const [missions, setMissions] = useState<{ id: string; name: string; description: string; status: string; created_at: string }[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
@@ -1543,44 +1539,44 @@ function MissionsView() {
   return (
     <div className="flex-1 overflow-auto p-6 space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="font-semibold">Your Missions</h3>
+        <h3 className="font-semibold">{t("nav.missions")}</h3>
         <Button size="sm" onClick={() => setShowCreate(true)}>
-          <Plus className="w-4 h-4 mr-1" /> New Mission
+          <Plus className="w-4 h-4 mr-1" /> {t("nav.missions")}
         </Button>
       </div>
 
       {missions.length === 0 && !showCreate ? (
         <div className="text-center py-12 space-y-3">
           <Rocket className="w-10 h-10 mx-auto text-muted-foreground/30" />
-          <p className="text-muted-foreground text-sm">No missions yet. Create your first mission.</p>
-          <Button onClick={() => setShowCreate(true)}>Create Mission</Button>
+          <p className="text-muted-foreground text-sm">{t("dashboard.noTasks")}</p>
+          <Button onClick={() => setShowCreate(true)}>{t("nav.missions")}</Button>
         </div>
       ) : (
         <div className="space-y-3">
           {showCreate && (
             <div className="bg-card border border-primary/20 rounded-lg p-5 space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Mission Name</label>
+                <label className="text-sm font-medium">{t("nav.missions")}</label>
                 <input
                   className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="e.g., Content Marketing Campaign"
+                  placeholder={t("nav.missions")}
                   autoFocus
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Description</label>
+                <label className="text-sm font-medium">{t("dashboard.taskDescription")}</label>
                 <textarea
                   className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring min-h-[60px] resize-y"
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
-                  placeholder="What's the goal?"
+                  placeholder={t("dashboard.taskDescription")}
                 />
               </div>
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" size="sm" onClick={() => setShowCreate(false)}>Cancel</Button>
-                <Button size="sm" onClick={createMission}>Create</Button>
+                <Button variant="outline" size="sm" onClick={() => setShowCreate(false)}>{t("common.cancel")}</Button>
+                <Button size="sm" onClick={createMission}>{t("common.save")}</Button>
               </div>
             </div>
           )}
@@ -1597,7 +1593,7 @@ function MissionsView() {
                 </div>
                 <Badge variant="outline" className="capitalize">{m.status}</Badge>
               </div>
-              <div className="text-xs text-muted-foreground mt-3">{timeAgo(m.created_at)}</div>
+              <div className="text-xs text-muted-foreground mt-3">{formatRelativeTime(m.created_at)}</div>
             </div>
           ))}
         </div>

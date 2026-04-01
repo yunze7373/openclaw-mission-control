@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOpenClawClient } from "@/lib/openclaw-client";
 
+export const dynamic = "force-dynamic";
+
 // Tools Playground API: invokes gateway WebSocket methods directly
 export async function POST(request: NextRequest) {
   try {

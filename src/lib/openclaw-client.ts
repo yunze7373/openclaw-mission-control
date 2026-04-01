@@ -1,5 +1,7 @@
-import WebSocket from "ws";
 import { randomUUID } from "crypto";
+import { execFile } from "child_process";
+import { accessSync, constants } from "fs";
+import path from "path";
 
 // --- Types ---
 
@@ -40,122 +42,38 @@ export interface ChatMessage {
 
 type EventCallback = (data: unknown) => void;
 
-interface PendingRequest {
-  resolve: (value: unknown) => void;
-  reject: (reason: unknown) => void;
-  timeout: ReturnType<typeof setTimeout>;
-}
-
-// Gateway protocol frame types
-interface EventFrame {
-  type: "event";
-  event: string;
-  seq?: number;
-  payload?: unknown;
-}
-
-interface ResponseFrame {
-  type: "res";
-  id: string;
-  ok: boolean;
-  payload?: unknown;
-  error?: { message?: string; code?: number };
-}
-
-interface RequestFrame {
-  type: "req";
-  id: string;
-  method: string;
-  params?: unknown;
-}
-
 // --- Client ---
 
 export class OpenClawClient {
-  private ws: WebSocket | null = null;
   private url: string;
   private authToken?: string;
-  private pendingRequests: Map<string, PendingRequest> = new Map();
-  private eventListeners: Map<string, Set<EventCallback>> = new Map();
+  private origin: string;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connected = false;
   private authenticated = false;
-  private connectResolve?: () => void;
-  private connectReject?: (err: Error) => void;
 
   constructor(url = "ws://127.0.0.1:18789", opts?: { authToken?: string }) {
     this.url = url;
     this.authToken = opts?.authToken;
+    this.origin = process.env.MISSION_CONTROL_ORIGIN || "http://127.0.0.1:3000";
   }
 
   // --- Connection with proper Gateway protocol ---
 
   async connect(): Promise<void> {
-    if (this.authenticated && this.ws?.readyState === WebSocket.OPEN) return;
-
-    return new Promise((resolve, reject) => {
-      this.connectResolve = resolve;
-      this.connectReject = reject;
-
-      try {
-        this.ws = new WebSocket(this.url, {
-          maxPayload: 25 * 1024 * 1024,
-        });
-      } catch (err) {
-        reject(err instanceof Error ? err : new Error(String(err)));
-        return;
-      }
-
-      const connectTimeout = setTimeout(() => {
-        reject(new Error("Gateway connection timeout (10s)"));
-        this.ws?.close();
-      }, 10000);
-
-      this.ws.on("open", () => {
-        this.connected = true;
-        // Wait for connect.challenge event from server
-        // The server will send it, and handleMessage will process it
-      });
-
-      this.ws.on("message", (raw: WebSocket.Data) => {
-        try {
-          const parsed = JSON.parse(raw.toString());
-          this.handleMessage(parsed, connectTimeout);
-        } catch {
-          // Ignore non-JSON
-        }
-      });
-
-      this.ws.on("close", () => {
-        this.connected = false;
-        this.authenticated = false;
-        clearTimeout(connectTimeout);
-        this.scheduleReconnect();
-      });
-
-      this.ws.on("error", (err) => {
-        clearTimeout(connectTimeout);
-        if (!this.authenticated) {
-          reject(err instanceof Error ? err : new Error(String(err)));
-        }
-      });
-    });
+    await this.callOnce("health", {}, 15000);
+    this.connected = true;
+    this.authenticated = true;
   }
 
   disconnect(): void {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
     this.connected = false;
     this.authenticated = false;
   }
 
   isConnected(): boolean {
-    return (
-      this.authenticated && this.ws?.readyState === WebSocket.OPEN
-    );
+    return this.authenticated;
   }
 
   private scheduleReconnect(): void {
@@ -166,122 +84,6 @@ export class OpenClawClient {
     }, 3000);
   }
 
-  // --- Protocol handling ---
-
-  private handleMessage(
-    msg: Record<string, unknown>,
-    connectTimeout?: ReturnType<typeof setTimeout>
-  ): void {
-    // Event frame
-    if (msg.type === "event") {
-      const evt = msg as unknown as EventFrame;
-
-      // Handle connect.challenge - send connect request
-      if (evt.event === "connect.challenge") {
-        const payload = evt.payload as { nonce?: string } | undefined;
-        const nonce = payload?.nonce;
-        this.sendConnectRequest(nonce, connectTimeout);
-        return;
-      }
-
-      // Broadcast to event listeners
-      const listeners = this.eventListeners.get(evt.event);
-      if (listeners) {
-        for (const cb of listeners) {
-          try { cb(evt.payload ?? evt); } catch { /* ignore */ }
-        }
-      }
-      const wildcardListeners = this.eventListeners.get("*");
-      if (wildcardListeners) {
-        for (const cb of wildcardListeners) {
-          try { cb({ event: evt.event, payload: evt.payload, seq: evt.seq }); } catch { /* ignore */ }
-        }
-      }
-      return;
-    }
-
-    // Response frame
-    if (msg.type === "res") {
-      const res = msg as unknown as ResponseFrame;
-      const pending = this.pendingRequests.get(res.id);
-      if (!pending) return;
-
-      // Skip only "accepted" ack (connect handshake).
-      // "started" from chat.send should resolve — agent processes asynchronously via events.
-      if (
-        res.ok &&
-        typeof res.payload === "object" &&
-        res.payload !== null &&
-        (res.payload as Record<string, unknown>).status === "accepted"
-      ) {
-        return;
-      }
-
-      this.pendingRequests.delete(res.id);
-      clearTimeout(pending.timeout);
-
-      if (res.ok) {
-        pending.resolve(res.payload);
-      } else {
-        pending.reject(
-          new Error(res.error?.message ?? "Unknown gateway error")
-        );
-      }
-    }
-  }
-
-  private sendConnectRequest(
-    nonce?: string,
-    connectTimeout?: ReturnType<typeof setTimeout>
-  ): void {
-    const id = randomUUID();
-    const frame: RequestFrame = {
-      type: "req",
-      id,
-      method: "connect",
-      params: {
-        minProtocol: 3,
-        maxProtocol: 3,
-        client: {
-          id: "gateway-client",
-          displayName: "Mission Control Dashboard",
-          version: "1.0.0",
-          platform: "node",
-          mode: "backend",
-        },
-        caps: [],
-        auth: this.authToken
-          ? { token: this.authToken }
-          : undefined,
-        role: "operator",
-        scopes: ["operator.admin"],
-        device: undefined,
-      },
-    };
-
-    // Register pending for the connect response
-    const pending: PendingRequest = {
-      resolve: () => {
-        if (connectTimeout) clearTimeout(connectTimeout);
-        this.authenticated = true;
-        this.connectResolve?.();
-      },
-      reject: (err: unknown) => {
-        if (connectTimeout) clearTimeout(connectTimeout);
-        this.connectReject?.(
-          err instanceof Error ? err : new Error(String(err))
-        );
-      },
-      timeout: setTimeout(() => {
-        this.pendingRequests.delete(id);
-        this.connectReject?.(new Error("Connect handshake timeout"));
-      }, 10000),
-    };
-
-    this.pendingRequests.set(id, pending);
-    this.ws?.send(JSON.stringify(frame));
-  }
-
   // --- JSON-RPC calls ---
 
   async call(
@@ -289,39 +91,74 @@ export class OpenClawClient {
     params?: unknown,
     timeoutMs = 30000
   ): Promise<unknown> {
-    if (!this.isConnected()) {
-      await this.connect();
-    }
+    return this.callOnce(method, params ?? {}, timeoutMs);
+  }
 
-    const id = randomUUID();
-    const frame: RequestFrame = {
-      type: "req",
-      id,
-      method,
-      params: params ?? {},
-    };
+  private async callOnce(
+    method: string,
+    params: unknown,
+    timeoutMs: number
+  ): Promise<unknown> {
+    const helperPath = this.resolveRpcHelperPath();
 
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(new Error(`RPC timeout: ${method}`));
-      }, timeoutMs);
+      execFile(process.execPath, [helperPath, method, JSON.stringify(params)], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          OPENCLAW_GATEWAY_URL: this.url,
+          OPENCLAW_AUTH_TOKEN: this.authToken ?? "",
+          MISSION_CONTROL_ORIGIN: this.origin,
+          OPENCLAW_RPC_TIMEOUT_MS: String(timeoutMs),
+        },
+        timeout: timeoutMs + 2000,
+        maxBuffer: 25 * 1024 * 1024,
+      }, (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr || error.message));
+          return;
+        }
 
-      this.pendingRequests.set(id, { resolve, reject, timeout });
-      this.ws!.send(JSON.stringify(frame));
+        try {
+          this.connected = true;
+          this.authenticated = true;
+          resolve(stdout ? JSON.parse(stdout) : null);
+        } catch (parseError) {
+          reject(
+            parseError instanceof Error
+              ? parseError
+              : new Error(String(parseError))
+          );
+        }
+      });
     });
+  }
+
+  private resolveRpcHelperPath(): string {
+    const candidates = [
+      path.resolve(process.cwd(), "scripts/openclaw-rpc.cjs"),
+      path.resolve(process.cwd(), "../scripts/openclaw-rpc.cjs"),
+      path.resolve(process.cwd(), "../../scripts/openclaw-rpc.cjs"),
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        accessSync(candidate, constants.R_OK);
+        return candidate;
+      } catch {
+        // try next candidate
+      }
+    }
+
+    throw new Error("openclaw-rpc helper not found");
   }
 
   // --- Events ---
 
   onEvent(type: string, callback: EventCallback): () => void {
-    if (!this.eventListeners.has(type)) {
-      this.eventListeners.set(type, new Set());
-    }
-    this.eventListeners.get(type)!.add(callback);
-    return () => {
-      this.eventListeners.get(type)?.delete(callback);
-    };
+    void type;
+    void callback;
+    return () => {};
   }
 
   // --- Agents ---
@@ -546,7 +383,7 @@ export class OpenClawClient {
 
   async resolveExecApproval(params: {
     id: string;
-    decision: "approve" | "reject";
+    decision: "allow-once" | "allow-always" | "deny";
   }): Promise<unknown> {
     return this.call("exec.approval.resolve", params);
   }
@@ -590,15 +427,9 @@ export class OpenClawClient {
   }
 }
 
-// Singleton for server-side usage
-let clientInstance: OpenClawClient | null = null;
-
 export function getOpenClawClient(): OpenClawClient {
-  if (!clientInstance) {
-    const url =
-      process.env.OPENCLAW_GATEWAY_URL || "ws://127.0.0.1:18789";
-    const authToken = process.env.OPENCLAW_AUTH_TOKEN;
-    clientInstance = new OpenClawClient(url, { authToken });
-  }
-  return clientInstance;
+  const url =
+    process.env.OPENCLAW_GATEWAY_URL || "ws://127.0.0.1:18789";
+  const authToken = process.env.OPENCLAW_AUTH_TOKEN;
+  return new OpenClawClient(url, { authToken });
 }

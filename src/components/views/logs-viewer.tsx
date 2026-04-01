@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useLocale } from "@/components/locale-provider";
+import { logLevelLabel } from "@/lib/i18n-mappers";
 
 interface LogLine {
   id: number;
@@ -99,6 +101,7 @@ function parseStringLine(line: string, id: number): LogLine {
 }
 
 export function LogsViewer() {
+  const { t, formatClockTime } = useLocale();
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [loading, setLoading] = useState(true);
   const [paused, setPaused] = useState(false);
@@ -161,20 +164,6 @@ export function LogsViewer() {
     return true;
   });
 
-  const formatTime = (ts: string) => {
-    try {
-      const d = new Date(ts);
-      return d.toLocaleTimeString("en-US", {
-        hour12: false,
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
-    } catch {
-      return ts.slice(11, 19) || ts;
-    }
-  };
-
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
       {/* Header */}
@@ -182,16 +171,16 @@ export function LogsViewer() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-bold">Live Logs</h2>
+            <h2 className="text-lg font-bold">{t("logs.title")}</h2>
           </div>
           {!paused && (
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              Streaming
+              {t("logs.streaming")}
             </span>
           )}
           {paused && (
-            <Badge variant="secondary" className="text-xs">Paused</Badge>
+            <Badge variant="secondary" className="text-xs">{t("logs.paused")}</Badge>
           )}
         </div>
 
@@ -203,7 +192,7 @@ export function LogsViewer() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search logs..."
+              placeholder={t("logs.searchPlaceholder")}
               className="pl-8 pr-3 py-1.5 bg-background border border-border rounded text-xs w-48 focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
@@ -233,7 +222,7 @@ export function LogsViewer() {
             size="sm"
             onClick={() => setPaused(!paused)}
             className="h-7 w-7 p-0"
-            title={paused ? "Resume" : "Pause"}
+            title={paused ? t("logs.resume") : t("logs.pause")}
           >
             {paused ? (
               <Play className="w-3.5 h-3.5" />
@@ -251,7 +240,7 @@ export function LogsViewer() {
               }
             }}
             className="h-7 w-7 p-0"
-            title="Scroll to bottom"
+            title={t("logs.scrollBottom")}
           >
             <ArrowDown className="w-3.5 h-3.5" />
           </Button>
@@ -260,7 +249,7 @@ export function LogsViewer() {
             size="sm"
             onClick={() => setLogs([])}
             className="h-7 w-7 p-0"
-            title="Clear logs"
+            title={t("logs.clearLogs")}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
@@ -281,13 +270,13 @@ export function LogsViewer() {
         {loading && logs.length === 0 ? (
           <div className="flex items-center justify-center py-20 text-muted-foreground">
             <Loader2 className="w-5 h-5 animate-spin mr-2" />
-            Connecting to log stream...
+            {t("logs.connecting")}
           </div>
         ) : filteredLogs.length === 0 ? (
           <div className="flex items-center justify-center py-20 text-muted-foreground">
             {logs.length > 0
-              ? "No logs match your filters"
-              : "Waiting for log entries..."}
+              ? t("logs.noMatch")
+              : t("logs.waiting")}
           </div>
         ) : (
           <div className="p-2">
@@ -303,12 +292,12 @@ export function LogsViewer() {
                   }`}
                 >
                   <span className="text-muted-foreground shrink-0 w-16 text-right">
-                    {formatTime(log.timestamp)}
+                    {formatClockTime(log.timestamp)}
                   </span>
                   <span
                     className={`shrink-0 w-11 font-bold ${style.color}`}
                   >
-                    {log.level}
+                    {logLevelLabel(log.level, t)}
                   </span>
                   <span className={`${style.color} break-all`}>
                     {log.message}
@@ -322,8 +311,8 @@ export function LogsViewer() {
 
       {/* Footer status */}
       <div className="px-4 py-1.5 border-t border-border bg-card/30 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
-        <span>{filteredLogs.length} lines shown</span>
-        <span>{autoScroll ? "Auto-scroll ON" : "Auto-scroll OFF"}</span>
+        <span>{t("logs.linesShown", { count: filteredLogs.length })}</span>
+        <span>{autoScroll ? t("logs.autoScrollOn") : t("logs.autoScrollOff")}</span>
       </div>
     </div>
   );
