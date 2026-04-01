@@ -139,15 +139,19 @@ async function main() {
     if (hasStandalone && standaloneAppDir) {
       const staticSrc = path.join(PKG_ROOT, ".next", "static");
       const staticDest = path.join(standaloneAppDir, ".next", "static");
-      if (fs.existsSync(staticSrc) && !fs.existsSync(staticDest)) {
-        fs.cpSync(staticSrc, staticDest, { recursive: true });
+      if (fs.existsSync(staticSrc)) {
+        // Ensure destination directory exists
+        if (!fs.existsSync(path.dirname(staticDest))) {
+          fs.mkdirSync(path.dirname(staticDest), { recursive: true });
+        }
+        fs.cpSync(staticSrc, staticDest, { recursive: true, force: true });
       }
 
       // Copy public folder if exists
       const publicSrc = path.join(PKG_ROOT, "public");
       const publicDest = path.join(standaloneAppDir, "public");
-      if (fs.existsSync(publicSrc) && !fs.existsSync(publicDest)) {
-        fs.cpSync(publicSrc, publicDest, { recursive: true });
+      if (fs.existsSync(publicSrc)) {
+        fs.cpSync(publicSrc, publicDest, { recursive: true, force: true });
       }
     }
 

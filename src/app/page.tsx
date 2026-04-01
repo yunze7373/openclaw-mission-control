@@ -100,7 +100,15 @@ interface ActivityEntry {
 interface Agent {
   id: string;
   name?: string;
-  model?: string;
+  identity?: {
+    name?: string;
+    emoji?: string;
+  };
+  model?: string | {
+    primary?: string;
+    fallbacks?: string[];
+  };
+  workspace?: string;
 }
 
 interface GatewayStatus {
@@ -1079,8 +1087,14 @@ function DispatchModal({ task, agents, onClose, onDispatch }: {
                     <SelectItem key={agent.id} value={agent.id}>
                       <div className="flex items-center gap-2">
                         <Bot className="w-4 h-4" />
-                        {agent.name || agent.id}
-                        {agent.model && <span className="text-muted-foreground">({agent.model})</span>}
+                        {agent.name || agent.identity?.name || agent.id}
+                        {((agent.model && typeof agent.model === "object" && "primary" in agent.model
+                          ? agent.model.primary
+                          : agent.model) as string | undefined) && (
+                          <span className="text-muted-foreground">({((agent.model && typeof agent.model === "object" && "primary" in agent.model
+                            ? agent.model.primary
+                            : agent.model) as string | undefined)})</span>
+                        )}
                       </div>
                     </SelectItem>
                   ))}
@@ -1490,11 +1504,15 @@ function AgentsView({ status, agents, onRefresh }: { status: GatewayStatus; agen
             <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center mb-3">
               <Bot className="w-5 h-5 text-primary" />
             </div>
-            <div className="font-semibold">{agent.name || agent.id}</div>
+            <div className="font-semibold">{agent.name || agent.identity?.name || agent.id}</div>
             <div className="text-xs text-muted-foreground font-mono">{agent.id}</div>
-            {agent.model && (
+            {((agent.model && typeof agent.model === "object" && "primary" in agent.model
+              ? agent.model.primary
+              : agent.model) as string | undefined) && (
               <div className="mt-2 text-xs text-primary flex items-center gap-1">
-                <Monitor className="w-3 h-3" /> {agent.model}
+                <Monitor className="w-3 h-3" /> {((agent.model && typeof agent.model === "object" && "primary" in agent.model
+                  ? agent.model.primary
+                  : agent.model) as string | undefined)}
               </div>
             )}
           </div>
