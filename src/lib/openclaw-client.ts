@@ -27,8 +27,28 @@ export interface OpenClawSession {
 export interface OpenClawCronJob {
   id: string;
   agentId?: string;
-  schedule: string;
+  name?: string;
   enabled: boolean;
+  schedule: string | {
+    kind: string;
+    everyMs?: number;
+    cron?: string;
+    anchorMs?: number;
+  };
+  payload?: {
+    kind: string;
+    message?: string;
+    [key: string]: unknown;
+  };
+  state?: {
+    nextRunAtMs?: number;
+    lastRunAtMs?: number;
+    lastRunStatus?: string;
+    lastStatus?: string;
+    lastError?: string;
+    [key: string]: unknown;
+  };
+  // Legacy fields for compatibility if needed
   lastRun?: string;
   nextRun?: string;
   prompt?: string;

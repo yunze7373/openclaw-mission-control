@@ -28,6 +28,8 @@ export const messages: Record<Locale, Messages> = {
       status: "Status",
       active: "active",
       newTask: "New Task",
+      never: "Never",
+      noData: "No data",
     },
     nav: {
       board: "Board",
@@ -337,6 +339,8 @@ export const messages: Record<Locale, Messages> = {
       status: "状态",
       active: "启用",
       newTask: "新建任务",
+      never: "从未",
+      noData: "暂无数据",
     },
     nav: {
       board: "看板",

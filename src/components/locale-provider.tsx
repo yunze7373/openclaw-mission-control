@@ -16,8 +16,8 @@ type LocaleContextValue = {
   locale: Locale;
   setLocale: (locale: Locale) => void;
   t: (key: string, vars?: Record<string, string | number>) => string;
-  formatRelativeTime: (dateStr: string) => string;
-  formatClockTime: (dateStr: string) => string;
+  formatRelativeTime: (val: string | number) => string;
+  formatClockTime: (val: string | number) => string;
 };
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
@@ -45,8 +45,9 @@ function interpolate(template: string, vars?: Record<string, string | number>): 
   return template.replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? `{${name}}`));
 }
 
-function relativeTime(locale: Locale, dateStr: string): string {
-  const date = new Date(dateStr.endsWith("Z") ? dateStr : `${dateStr}Z`);
+function relativeTime(locale: Locale, val: string | number): string {
+  if (!val) return resolveMessage(locale, "cron.never");
+  const date = typeof val === "number" ? new Date(val) : new Date(val.endsWith("Z") ? val : `${val}Z`);
   const diffSeconds = Math.floor((date.getTime() - Date.now()) / 1000);
   if (!Number.isFinite(diffSeconds)) return resolveMessage(locale, "common.justNow");
   if (Math.abs(diffSeconds) < 10) return resolveMessage(locale, "common.justNow");
@@ -67,9 +68,10 @@ function relativeTime(locale: Locale, dateStr: string): string {
   return resolveMessage(locale, "common.justNow");
 }
 
-function clockTime(locale: Locale, dateStr: string): string {
-  const date = new Date(dateStr.endsWith("Z") ? dateStr : `${dateStr}Z`);
-  if (Number.isNaN(date.getTime())) return dateStr;
+function clockTime(locale: Locale, val: string | number): string {
+  if (!val) return "";
+  const date = typeof val === "number" ? new Date(val) : new Date(val.endsWith("Z") ? val : `${val}Z`);
+  if (Number.isNaN(date.getTime())) return String(val);
   return date.toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
@@ -106,8 +108,8 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
       locale,
       setLocale,
       t,
-      formatRelativeTime: (dateStr: string) => relativeTime(locale, dateStr),
-      formatClockTime: (dateStr: string) => clockTime(locale, dateStr),
+      formatRelativeTime: (val: string | number) => relativeTime(locale, val),
+      formatClockTime: (val: string | number) => clockTime(locale, val),
     }),
     [locale, setLocale, t]
   );

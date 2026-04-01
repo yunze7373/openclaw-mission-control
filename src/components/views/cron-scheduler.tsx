@@ -43,12 +43,23 @@ interface ScheduleObject {
 
 interface CronJob {
   id: string;
-  prompt?: string;
+  name?: string;
+  prompt?: string; // Legacy
+  payload?: {
+    kind: string;
+    message?: string;
+  };
   schedule: string | ScheduleObject;
   enabled: boolean;
   agentId?: string;
-  lastRun?: string;
-  nextRun?: string;
+  state?: {
+    lastRunAtMs?: number;
+    nextRunAtMs?: number;
+    lastError?: string;
+    lastRunStatus?: string;
+  };
+  lastRun?: string; // Legacy
+  nextRun?: string; // Legacy
 }
 
 // Human-friendly schedule presets
@@ -277,7 +288,7 @@ export function CronScheduler() {
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm truncate">
-                        {job.prompt || t("cron.unnamedTask")}
+                        {job.name || job.payload?.message || job.prompt || t("cron.unnamedTask")}
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
@@ -288,8 +299,13 @@ export function CronScheduler() {
                           <Bot className="w-3 h-3" />
                           {job.agentId || "main"}
                         </span>
-                        {job.nextRun && (
-                          <span>{t("cron.next")}: {formatRelativeTime(job.nextRun)}</span>
+                        {(job.state?.nextRunAtMs || job.nextRun) && (
+                          <span>{t("cron.next")}: {formatRelativeTime((job.state?.nextRunAtMs || job.nextRun)!)}</span>
+                        )}
+                        {job.state?.lastRunStatus === "error" && (
+                          <Badge variant="destructive" className="h-4 px-1 text-[10px] animate-pulse">
+                            ERROR
+                          </Badge>
                         )}
                       </div>
                     </div>
@@ -347,6 +363,12 @@ export function CronScheduler() {
                   {isExpanded && (
                     <div className="px-4 pb-4 pt-0 border-t border-border ml-6">
                       <div className="grid grid-cols-2 gap-3 py-3 text-xs">
+                        <div className="col-span-2 bg-muted/30 p-2 rounded border border-border/50 mb-1">
+                          <div className="text-muted-foreground mb-1 font-semibold">{t("cron.prompt")}:</div>
+                          <div className="font-mono whitespace-pre-wrap break-all opacity-80">
+                            {job.payload?.message || job.prompt || t("common.noData")}
+                          </div>
+                        </div>
                         <div>
                           <span className="text-muted-foreground">{t("cron.scheduleLabel")}:</span>{" "}
                           <span className="font-mono">{scheduleToHuman(job.schedule, locale, t)}</span>
@@ -357,13 +379,21 @@ export function CronScheduler() {
                         </div>
                         <div>
                           <span className="text-muted-foreground">{t("cron.lastRunLabel")}:</span>{" "}
-                          {job.lastRun ? formatRelativeTime(job.lastRun) : t("cron.never")}
+                          {(job.state?.lastRunAtMs || job.lastRun) ? formatRelativeTime((job.state?.lastRunAtMs || job.lastRun)!) : t("cron.never")}
                         </div>
                         <div>
                           <span className="text-muted-foreground">{t("cron.nextRunLabel")}:</span>{" "}
-                          {job.nextRun ? formatRelativeTime(job.nextRun) : t("cron.never")}
+                          {(job.state?.nextRunAtMs || job.nextRun) ? formatRelativeTime((job.state?.nextRunAtMs || job.nextRun)!) : t("cron.never")}
                         </div>
                       </div>
+                      
+                      {job.state?.lastError && (
+                        <div className="mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded text-[11px] text-red-400 font-mono">
+                          <div className="font-bold mb-1 uppercase text-[9px] opacity-70">Last Error:</div>
+                          {job.state.lastError}
+                        </div>
+                      )}
+
                       <div className="flex gap-2 pt-2">
                         <Button
                           variant="outline"
